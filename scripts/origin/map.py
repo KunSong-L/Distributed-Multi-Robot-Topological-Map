@@ -26,7 +26,7 @@ from ros_topoexplore.msg import TopoMapMsg
 
 # from ros_topoexplore.srv import ExpStart
 
-from TopoMap_new import Vertex, Edge, TopologicalMap
+from TopoMap import Vertex, Edge, TopologicalMap
 from utils.imageretrieval.imageretrievalnet import init_network
 from utils.imageretrieval.extract_feature import cal_feature
 from utils.topomap_bridge import TopomapToMessage, MessageToTopomap
