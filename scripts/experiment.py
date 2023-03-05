@@ -63,8 +63,8 @@ class ExpNode:
         # print(robot, "length", data.markers[2].header.stamp)
 
     def exp_start_callback(self, data):
-        self.exp_start = 1
-        if self.exp_done == 1:
+        self.exp_start = 1 
+        if self.exp_done == 1:# receive this message the second time
             print("exp done,", self.exp_time, self.half_length)
         
 
