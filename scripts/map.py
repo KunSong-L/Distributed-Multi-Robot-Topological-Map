@@ -396,7 +396,9 @@ class MapNode:
         self.panoramic_view = np.hstack(panoram)
         # cv2.imwrite("/home/master/debug/panormaic.jpg", cv2.cvtColor(self.panoramic_view, cv2.COLOR_BGR2RGB))
         # cv2.imwrite("/home/master/debug/1.jpg", cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite("/home/master/debug/2.jpg", cv2.cvtColor(img2, cv2.COLOR_BGR2RGB))
         # cv2.imwrite("/home/master/debug/3.jpg", cv2.cvtColor(img3, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite("/home/master/debug/4.jpg", cv2.cvtColor(img4, cv2.COLOR_BGR2RGB))
         image_message = self.cv_bridge.cv2_to_imgmsg(self.panoramic_view, encoding="rgb8")
         image_message.header.stamp = rospy.Time.now()
         image_message.header.frame_id = robot_name+"/odom"
