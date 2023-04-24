@@ -400,7 +400,7 @@ class MapNode:
         # cv2.imwrite("/home/master/debug/3.jpg", cv2.cvtColor(img3, cv2.COLOR_BGR2RGB))
         # cv2.imwrite("/home/master/debug/4.jpg", cv2.cvtColor(img4, cv2.COLOR_BGR2RGB))
         image_message = self.cv_bridge.cv2_to_imgmsg(self.panoramic_view, encoding="rgb8")
-        image_message.header.stamp = rospy.Time.now()
+        image_message.header.stamp = rospy.Time.now()  
         image_message.header.frame_id = robot_name+"/odom"
         self.panoramic_view_pub.publish(image_message)
         print('publish a panoramic view')
