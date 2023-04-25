@@ -32,5 +32,14 @@
       <pose>0 0 0 0 0 -1.57</pose>
     </include>
 
+    <include>
+      <uri>model://academy_wall</uri>
+    </include>
+    <include>
+      <uri>model://add_wall</uri>
+    </include>
+    <include>
+      <uri>model://add_wall2</uri>
+    </include>
   </world>
 </sdf>

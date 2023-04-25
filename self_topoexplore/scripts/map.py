@@ -403,7 +403,6 @@ class MapNode:
         image_message.header.stamp = rospy.Time.now()  
         image_message.header.frame_id = robot_name+"/odom"
         self.panoramic_view_pub.publish(image_message)
-        print('publish a panoramic view')
     
     def map_panoramic_callback(self, panoramic):# get an panoramic view
         start_msg = String()
