@@ -1,4 +1,4 @@
-from ros_topoexplore.msg import BinaryArrayMsg, EdgeMsg, VertexMsg, TopoMapMsg
+from self_topoexplore.msg import BinaryArrayMsg, EdgeMsg, VertexMsg, TopoMapMsg
 from TopoMap import Vertex, Edge, TopologicalMap
 import numpy as np
 import sys

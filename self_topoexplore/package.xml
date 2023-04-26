@@ -2,24 +2,24 @@
 <package format="2">
   <name>self_topoexplore</name>
   <version>0.0.0</version>
-  <description>The self_topoexplore package</description>
+  <description>The ros topological explore package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
   <!-- <maintainer email="jane.doe@example.com">Jane Doe</maintainer> -->
-  <maintainer email="master@todo.todo">master</maintainer>
-
+  <maintainer email="coldtea@sjtu.edu.cn">Kun Song</maintainer>
+  <!-- modified from MRTopoMap-->
 
   <!-- One license tag required, multiple allowed, one license per tag -->
   <!-- Commonly used license strings: -->
   <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
-  <license>TODO</license>
+  <license>MIT</license>
 
 
   <!-- Url tags are optional, but multiple are allowed, one per tag -->
   <!-- Optional attribute type can be: website, bugtracker, or repository -->
   <!-- Example: -->
-  <!-- <url type="website">http://wiki.ros.org/self_topoexplore</url> -->
+  <!-- <url type="website">http://wiki.ros.org/igibson-ros</url> -->
 
 
   <!-- Author tags are optional, multiple are allowed, one per tag -->
@@ -52,12 +52,23 @@
   <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
   <build_depend>std_msgs</build_depend>
+  <build_depend>geometry_msgs</build_depend>
   <build_export_depend>roscpp</build_export_depend>
   <build_export_depend>rospy</build_export_depend>
   <build_export_depend>std_msgs</build_export_depend>
+  <build_export_depend>geometry_msgs</build_export_depend>
   <exec_depend>roscpp</exec_depend>
   <exec_depend>rospy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>turtlebot_navigation</exec_depend>
+  <exec_depend>map_server</exec_depend>
+  <exec_depend>nav2d</exec_depend>
+  <exec_depend>turtlebot_teleop</exec_depend>
+
+  <!-- custom messages -->
+  <build_depend>message_generation</build_depend>
+  <exec_depend>message_runtime</exec_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->
