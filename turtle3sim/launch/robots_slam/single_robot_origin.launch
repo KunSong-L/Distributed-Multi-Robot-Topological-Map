@@ -14,5 +14,6 @@
   <node name="map_padding" pkg="turtlebot3sim" type="map_padding.py" output="screen">
     <param name="robot_name" value="robot1"/>
   </node>
-
+  
+  
 </launch>

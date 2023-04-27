@@ -51,7 +51,7 @@
     <plugin name="turtlebot3_burger_controller" filename="libgazebo_ros_diff_drive.so">
       <commandTopic>cmd_vel</commandTopic>
       <odometryTopic>odom1</odometryTopic>
-      <odometryFrame>odom</odometryFrame>
+      <odometryFrame>odom_gazebo</odometryFrame>
       <odometrySource>world</odometrySource>
       <!--dont use odom published by gazebo-->
       <publishOdomTF>false</publishOdomTF>

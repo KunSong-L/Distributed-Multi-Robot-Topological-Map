@@ -94,8 +94,8 @@ class TopologicalMap:
         #与自己的ertex进行匹配，检验是否为同一点
         for items in self.vertex:
             score = np.dot(vertex.descriptor.T, items.descriptor) #转置之后点积，这里应该不用trans也可以
-            point1 = np.array([vertex.pose.pose.position.x, vertex.pose.pose.position.y, vertex.pose.pose.position.z])
-            point2 = np.array([items.pose.pose.position.x, items.pose.pose.position.y, items.pose.pose.position.z])
+            point1 = np.array([vertex.pose[0], vertex.pose[1]])
+            point2 = np.array([items.pose[0], items.pose[1]])
             dis = np.linalg.norm(point1 - point2)
             if score > self.threshold or dis < 2.5:  #找到距离最近的点，以及一个匹配的点
                 matched_flag = 1
@@ -109,9 +109,9 @@ class TopologicalMap:
             vertex.id = self.vertex_id
             current_node = vertex #add a new vertex
             self.vertex.append(vertex)
-            self.x = np.concatenate((self.x, [vertex.pose.pose.position.x]), axis=0) # the x and y of vertex
-            self.y = np.concatenate((self.y, [vertex.pose.pose.position.y]), axis=0)
-            self.center = np.array([np.mean(self.x), np.mean(self.y)]) # now robot pos
+            self.x = np.concatenate((self.x, [vertex.pose[0]]), axis=0) # the x and y of vertex
+            self.y = np.concatenate((self.y, [vertex.pose[1]]), axis=0)
+            self.center = np.array([np.mean(self.x), np.mean(self.y)]) # center of vertex
             # print('x = ', self.x)
             # print('y = ', self.y)
             # print('center = ', self.center)
@@ -152,7 +152,7 @@ class TopologicalMap:
         temp_nd = []
         for front in frontiers:
             front = np.array([front[0], front[1]])
-            frontP = np.array([picked_vertex.pose.pose.position.x, picked_vertex.pose.pose.position.y])
+            frontP = np.array([picked_vertex.pose[0], picked_vertex.pose[1]])
             current_pose = frontP
             dis = np.sqrt(np.sum(np.square(front-center))) * resolution
             dis += 4 #?
@@ -160,20 +160,20 @@ class TopologicalMap:
                 if center[1] >=front[1]:#3象限  3象限
                     theta = np.arctan((center[0]-front[0])/(center[1]-front[1]))
                     angle = math.degrees(theta) - 180
-                    print('in first quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
+                    # print('in first quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
                 else:#2象限 4象限
                     theta = np.arctan((center[0]-front[0])/(front[1]-center[1]))
                     angle = - math.degrees(theta)
-                    print('in second quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
+                    # print('in second quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
             else:
                 if center[1] >=front[1]:#1象限  2象限
                     theta = np.arctan((center[1]-front[1])/(front[0]-center[0]))
                     angle = 90 + math.degrees(theta)
-                    print('in third quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
+                    # print('in third quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
                 else:#4象限   1象限
                     theta = np.arctan((front[0]-center[0])/(front[1]-center[1]))
                     angle = math.degrees(theta)
-                    print('in fourth quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
+                    # print('in fourth quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
             odom_angle = math.radians(angle + self.offset_angle) # 后面没仔细看，写的太差了
             map_angle = math.radians(angle)
             front_in_map = copy.deepcopy(frontP)
@@ -201,7 +201,7 @@ class TopologicalMap:
         mapv = np.zeros([size, size, 3], np.uint8)
         pose = dict()
         for vertex in self.vertex:
-            pose[vertex.id] = (int((vertex.pose.pose.position.x+5)/10 * size), int((5-vertex.pose.pose.position.y)/10 * size))
+            pose[vertex.id] = (int((vertex.pose[0]+5)/10 * size), int((5-vertex.pose[1])/10 * size))
             mapv = cv2.circle(mapv, pose[vertex.id], 3, vcolor, -1)
         for edge in self.edge:
             mapv = cv2.line(mapv, pose[edge.link[0]], pose[edge.link[1]], ecolor)

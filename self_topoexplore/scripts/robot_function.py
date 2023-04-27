@@ -1,6 +1,8 @@
 import rospy
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
+from geometry_msgs.msg import Quaternion, PoseStamped, Point
+from scipy.spatial.transform import Rotation as R
 
 def set_marker(robot_name, id, pose, color=(0.5, 0, 0.5), action=Marker.ADD):
     now = rospy.Time.now()
@@ -11,8 +13,20 @@ def set_marker(robot_name, id, pose, color=(0.5, 0, 0.5), action=Marker.ADD):
     marker_message.id = id
     marker_message.type = Marker.SPHERE
     marker_message.action = action
-    marker_message.pose.position = pose.pose.position
-    marker_message.pose.orientation = pose.pose.orientation
+
+    now_vertex_pose = Point()
+    now_vertex_pose.x = pose[0]
+    now_vertex_pose.y = pose[1]
+    now_vertex_pose.z = 0
+    now_vertex_ori = Quaternion()
+    orientation = R.from_euler('z', pose[2], degrees=True).as_quat()
+    now_vertex_ori.x = orientation[0]
+    now_vertex_ori.y = orientation[1]
+    now_vertex_ori.z = orientation[2]
+    now_vertex_ori.w = orientation[3]
+
+    marker_message.pose.position = now_vertex_pose
+    marker_message.pose.orientation = now_vertex_ori
     marker_message.scale.x = 0.3
     marker_message.scale.y = 0.3
     marker_message.scale.z = 0.3
@@ -46,8 +60,18 @@ def set_edge(robot_name, id, poses, type="edge"):
     path_message.scale.x = 0.05
     path_message.scale.y = 0.05
     path_message.scale.z = 0.05
-    path_message.points.append(poses[0])
-    path_message.points.append(poses[1])
+
+    point_1 = Point()
+    point_1.x = poses[0][0]
+    point_1.y = poses[0][1]
+    point_1.z = 0
+    path_message.points.append(point_1)
+
+    point_2 = Point()
+    point_2.x = poses[1][0]
+    point_2.y = poses[1][1]
+    point_2.z = 0
+    path_message.points.append(point_2)
 
     path_message.pose.orientation.x=0.0
     path_message.pose.orientation.y=0.0

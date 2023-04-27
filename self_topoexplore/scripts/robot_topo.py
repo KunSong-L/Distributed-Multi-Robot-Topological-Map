@@ -77,7 +77,7 @@ class RobotNode:
         ])
 
         #robot data
-        self.pose = [0,0,0] # x y yaw angle
+        self.pose = Odometry()
         self.init_map_angle_ready = 0
         self.map_orientation = None
         self.map_angle = None #Yaw angle of map
@@ -145,20 +145,21 @@ class RobotNode:
             "/start_exp", String, queue_size=1) #发一个start
         
             
-
-        # rospy.Subscriber(
-        #     robot_name+"/odom", Odometry, self.loop_detect_callback, queue_size=1)
+        rospy.Subscriber(
+            robot_name+"/panoramic", Image, self.map_odom_callback, queue_size=1)
+        rospy.Subscriber(
+            robot_name+"/odom", Odometry, self.loop_detect_callback, queue_size=1)
 
         rospy.Subscriber(
             robot_name+"/panoramic", Image, self.map_panoramic_callback, queue_size=1)
         rospy.Subscriber(
             robot_name+"/map", OccupancyGrid, self.map_grid_callback, queue_size=1)
 
-        # for robot in robot_list:
-        #     rospy.Subscriber(
-        #         robot+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1)
-        #     rospy.Subscriber(
-        #         robot+"/ud", UnexploredDirectionsMsg, self.unexplored_directions_callback, robot, queue_size=1)
+        for robot in robot_list:
+            rospy.Subscriber(
+                robot+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1)
+            rospy.Subscriber(
+                robot+"/ud", UnexploredDirectionsMsg, self.unexplored_directions_callback, robot, queue_size=1)
         
         rospy.Subscriber(
             robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
@@ -193,34 +194,18 @@ class RobotNode:
         offset = 0
         #init cvBridge
         panoramic_view = self.cv_bridge.imgmsg_to_cv2(panoramic, desired_encoding="rgb8")
+
         feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
-
-        # ----get now pose----  
-        #tracking map->base_footprint
-        tmptimenow = rospy.Time.now()
-        self.tf_listener2.waitForTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow, rospy.Duration(0.1))
-        try:
-            self.tf_transform, self.rotation = self.tf_listener2.lookupTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow)
-            self.tf_transform_ready = 1
-            self.pose[0] = self.tf_transform[0]
-            self.pose[1] = self.tf_transform[1]
-            self.pose[2] = R.from_quat(self.rotation).as_euler('xyz', degrees=True)[2]
-
-            if self.init_map_angle_ready == 0:
-                self.map_angle = self.pose[2]
-                self.map.offset_angle = self.map_angle
-                self.init_map_angle_ready = 1
-        except:
-            pass
-        # ----finish getting pose----
-        
-        current_pose = copy.deepcopy(self.pose)
+        current_pose = self.pose
         vertex = Vertex(robot_name, id=-1, pose=current_pose, descriptor=feature)
         self.last_vertex, self.current_node, matched_flag = self.map.add(vertex, self.last_vertex, self.current_node)
+        
         if matched_flag==0:
             #create a new one
+
             while self.grid_map_ready==0 or self.tf_transform_ready==0:
                 time.sleep(0.5)
+            
             # 1. set and publish the topological map visulization markers
 
             localMap = self.grid_map
@@ -249,7 +234,7 @@ class RobotNode:
                 poses = []
                 for vertex in self.map.vertex:
                     if (edge.link[0][0]==vertex.robot_name and edge.link[0][1]==vertex.id) or (edge.link[1][0]==vertex.robot_name and edge.link[1][1]==vertex.id):
-                        poses.append(vertex.pose)
+                        poses.append(vertex.pose.pose.position)
                         num_count += 1
                     if num_count == 2:
                         edge_message = set_edge(robot_name, edge.id, poses)
@@ -257,11 +242,12 @@ class RobotNode:
                         break
             self.marker_pub.publish(marker_array)
             self.edge_pub.publish(edge_array)
-
             # print(' ')
             # 2. publish next goal
-            position = current_pose[0:2]
-            euler = current_pose[2]
+            position = current_pose.pose.position
+            orientation = current_pose.pose.orientation
+            orientation = [orientation.x, orientation.y, orientation.z, orientation.w]
+            euler = R.from_quat(orientation).as_euler('xyz', degrees=True)[2]
 
             goal_message, _ = self.get_move_goal(robot_name, position, euler, 0)
             goal_marker = self.get_goal_marker(robot_name, position, euler, 0)
@@ -316,20 +302,20 @@ class RobotNode:
                 nextmove += self.map_angle
                 #move goal:now_pos + basic_length+offset;  now_angle + nextmove
                 self.last_nextmove = nextmove
-                goal_message, self.goal = self.get_move_goal(robot_name, current_pose, nextmove, basic_length+offset)
-                goal_marker = self.get_goal_marker(robot_name, current_pose, nextmove, basic_length+offset)
+                goal_message, self.goal = self.get_move_goal(robot_name, current_pose.pose.position, nextmove, basic_length+offset)
+                goal_marker = self.get_goal_marker(robot_name, current_pose.pose.position, nextmove, basic_length+offset)
                 self.actoinclient.send_goal(goal_message)
                 self.goal_pub.publish(goal_marker)
 
         #deal with no place to go
         if self.no_place_to_go:
             find_a_goal = 0
-            position = self.pose
-            position = np.array([position[0], position[1]])
+            position = self.pose.pose.position
+            position = np.array([position.x, position.y])
             distance_list = []
             for i in range(len(self.map.vertex)):
-                temp_position = self.map.vertex[i].pose
-                temp_position = np.asarray([temp_position[0], temp_position[1]])
+                temp_position = self.map.vertex[i].pose.pose.position
+                temp_position = np.asarray([temp_position.x, temp_position.y])
                 distance_list.append(np.linalg.norm(temp_position - position))
             while(distance_list):
                 min_dis = min(distance_list)
@@ -353,8 +339,8 @@ class RobotNode:
                     
                     #move goal:now_pos + basic_length+offset;  now_angle + nextmove
                     nextmove += self.map_angle
-                    goal_message, self.goal = self.get_move_goal(robot_name, point, nextmove, basic_length+offset)
-                    goal_marker = self.get_goal_marker(robot_name, point, nextmove, basic_length+offset)
+                    goal_message, self.goal = self.get_move_goal(robot_name, point.pose.position, nextmove, basic_length+offset)
+                    goal_marker = self.get_goal_marker(robot_name, point.pose.position, nextmove, basic_length+offset)
                     self.actoinclient.send_goal(goal_message)
                     self.goal_pub.publish(goal_marker)
                     print(robot_name, "find a new goal")
@@ -365,7 +351,39 @@ class RobotNode:
                     break
             self.no_place_to_go = 0
 
+    def map_odom_callback(self, data):
+        #init topomap angle and update pose
+        # self.pose = data.pose #update pose
+        # if self.init_map_angle_ready == 0:
+        #     self.map_orientation = [data.pose.pose.orientation.x, data.pose.pose.orientation.y, data.pose.pose.orientation.z, data.pose.pose.orientation.w]
+        #     self.map_angle = R.from_quat(self.map_orientation).as_euler('xyz', degrees=True)[2]
+        #     self.map.offset_angle = self.map_angle
+        #     self.init_map_angle_ready = 1
+        #right way of getting pose
+        tmptimenow = rospy.Time.now()
+        self.tf_listener2.waitForTransform(robot_name+"/map", robot_name+"/odom", tmptimenow, rospy.Duration(0.1))
+        try:
+            self.tf_transform, self.rotation = self.tf_listener2.lookupTransform(robot_name+"/map", robot_name+"/odom", tmptimenow)
+            self.tf_transform_ready = 1
+            self.pose.pose.position.x = self.tf_transform[0]
+            self.pose.pose.position.y = self.tf_transform[1]
+            self.pose.pose.position.z = self.tf_transform[2]
+            if self.init_map_angle_ready == 0:
+                self.map_orientation = self.rotation
+                self.map_angle = R.from_quat(self.map_orientation).as_euler('xyz', degrees=True)[2]
+                self.map.offset_angle = self.map_angle
+                self.init_map_angle_ready = 1
+        except:
+            pass
+        
+        print("------now odom is--------")
+        print(self.pose.pose.position.x)
 
+
+        current_pose = np.array([self.tf_transform[0], self.tf_transform[1]])
+        if np.sqrt(np.sum(np.square(current_pose-self.goal))) < 0.5:
+            print("------------Reach the goal, and no place to go---------------")
+            self.no_place_to_go = 1
 
     def map_grid_callback(self, data):
         #generate grid map and global grid map
@@ -391,6 +409,7 @@ class RobotNode:
                 temp[np.where(temp==-1)] = 125
                 cv2.imwrite(debug_path+"map.jpg", temp)
                 cv2.imwrite(debug_path+"/globalmap.jpg", self.global_map)
+
             self.grid_map_ready = 1
         except:
             # print("tf listener fails")
@@ -423,8 +442,8 @@ class RobotNode:
             pose = Point()
             nextmove = math.radians(nextmove)
             theta = math.radians(euler)
-            x = last_pose[0] + basic_length * np.cos(nextmove)
-            y = last_pose[1] + basic_length * np.sin(nextmove)
+            x = last_pose.x + basic_length * np.cos(nextmove)
+            y = last_pose.y + basic_length * np.sin(nextmove)
             goal = np.array([x, y])
             pose.x = x*np.cos(theta)-y*np.sin(theta) + self.tf_transform[0]
             pose.y = y*np.cos(theta)+x*np.sin(theta) + self.tf_transform[1]
@@ -446,8 +465,8 @@ class RobotNode:
         pose = Point()
         nextmove = math.radians(nextmove)
         theta = math.radians(euler)
-        x = last_pose[0] + basic_length * np.cos(nextmove)
-        y = last_pose[1] + basic_length * np.sin(nextmove)
+        x = last_pose.x + basic_length * np.cos(nextmove)
+        y = last_pose.y + basic_length * np.sin(nextmove)
         pose.x = x*np.cos(theta)-y*np.sin(theta) + self.tf_transform[0]
         pose.y = y*np.cos(theta)+x*np.sin(theta) + self.tf_transform[1]
         goal_marker.pose.position = pose
@@ -455,8 +474,8 @@ class RobotNode:
         return goal_marker
 
     def loop_detect_callback(self, data):
-        position = self.pose
-        position = np.array([position[0], position[1]])
+        position = self.pose.pose.position
+        position = np.array([position.x, position.y])
         if self.detect_loop:
             for i in range(len(self.map.vertex)):
                 meeted = list()
@@ -477,13 +496,13 @@ class RobotNode:
             rr = 150
             for i in range(len(self.map.vertex)):
                 vertex = self.map.vertex[i]
-                vertex_position = np.array([vertex.pose[0], vertex.pose[1]])
+                vertex_position = np.array([vertex.pose.pose.position.x, vertex.pose.pose.position.y])
                 if vertex.navigableDirection:
                     if np.sqrt(np.sum(np.square(position-vertex_position))) < 100:
                         location = [0, 0]
                         shape = self.global_map.shape
-                        location[0] = self.current_loc[0] + int((self.pose[0] - vertex_position[0])/0.05)
-                        location[1] = self.current_loc[1] - int((self.pose[1] - vertex_position[1])/0.05)
+                        location[0] = self.current_loc[0] + int((self.pose.pose.position.x - vertex_position[0])/0.05)
+                        location[1] = self.current_loc[1] - int((self.pose.pose.position.y - vertex_position[1])/0.05)
                         temp_map = self.global_map[max(location[0]-rr,0):min(location[0]+rr,shape[0]), max(location[1]-rr,0):min(location[1]+rr, shape[1])]
                         self.map.vertex[i].localMap = temp_map
                         old_ud = self.map.vertex[i].navigableDirection
@@ -555,7 +574,7 @@ class RobotNode:
                                 print("matched:", svertex.robot_name, svertex.id, vertex.robot_name, vertex.id, score)
                                 if vertex.robot_name not in self.meeted_robot:
                                     self.meeted_robot.append(vertex.robot_name)
-                                    self.relative_position[vertex.robot_name] = [svertex.pose[0]-vertex.pose[0], svertex.pose[1]-vertex.pose[1], svertex.pose.pose.position.z-vertex.pose.pose.position.z]
+                                    self.relative_position[vertex.robot_name] = [svertex.pose.pose.position.x-vertex.pose.pose.position.x, svertex.pose.pose.position.y-vertex.pose.pose.position.y, svertex.pose.pose.position.z-vertex.pose.pose.position.z]
                                 matched_vertex.append(vertex)
                                 self.vertex_dict[vertex.robot_name].append(vertex.id)
                                 vertex_pair[vertex.id] = svertex.id
@@ -590,8 +609,8 @@ class RobotNode:
                         self.map.vertex.append(vertex)
                         point = self.map.center_dict[vertex.robot_name]
                         number = len(self.vertex_dict[vertex.robot_name])
-                        point[0] = (point[0]*number + vertex.pose[0]) / (number+1)
-                        point[1] = (point[1]*number + vertex.pose[1]) / (number+1)
+                        point[0] = (point[0]*number + vertex.pose.pose.position.x) / (number+1)
+                        point[1] = (point[1]*number + vertex.pose.pose.position.y) / (number+1)
                         self.map.center_dict[vertex.robot_name] = point
                         self.vertex_dict[vertex.robot_name].append(vertex.id)
 
