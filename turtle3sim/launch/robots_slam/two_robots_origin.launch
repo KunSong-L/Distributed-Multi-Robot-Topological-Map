@@ -26,5 +26,6 @@
   <node name="map_padding2" pkg="turtlebot3sim" type="map_padding.py" output="screen">
     <param name="robot_name" value="robot2"/>
   </node>
-
+  
+  <rosparam param="map_resolution">0.01</rosparam>
 </launch>

@@ -17,7 +17,7 @@ def if_frontier(window):
 
     return True
 
-def get_frontier_points(map, resolution=0.05) -> list:
+def get_frontier_points(map, resolution=0.01) -> list:
     shape = map.shape
     kernel_size = 4
     frontier_points = []
@@ -84,14 +84,14 @@ class TopologicalMap:
         self.edge.append(edge)
 
     def add(self, vertex=None, last_vertex=-1, current_node=None) -> None:
+        #current_node: now match node
+        #last_vertex: last added vertex
         matched_flag = 0
         if current_node != None:# the initial value of current node is None, so this line means that current node is initialized
             temp_name = current_node.robot_name # 可以认为是上一个创建的点
             temp_id = current_node.id
         max_score = 0
-        # print('length of vertes = ', len(self.vertex))
-        # lenth of vertex is 1
-        #与自己的ertex进行匹配，检验是否为同一点
+        #与自己的vertex进行匹配，检验是否为同一点
         for items in self.vertex:
             score = np.dot(vertex.descriptor.T, items.descriptor) #转置之后点积，这里应该不用trans也可以
             point1 = np.array([vertex.pose[0], vertex.pose[1]])
@@ -99,10 +99,9 @@ class TopologicalMap:
             dis = np.linalg.norm(point1 - point2)
             if score > self.threshold or dis < 2.5:  #找到距离最近的点，以及一个匹配的点
                 matched_flag = 1
-            if score > max_score:
-                max_score = score
-                if dis < 2.5:
-                    current_node = items # current node是距离当前小于2.5的最匹配的点，定义有点复杂
+                if score > max_score: #find best match
+                    max_score = score
+                    current_node = items
         
         if matched_flag == 0:
             self.vertex_id += 1
@@ -111,16 +110,14 @@ class TopologicalMap:
             self.vertex.append(vertex)
             self.x = np.concatenate((self.x, [vertex.pose[0]]), axis=0) # the x and y of vertex
             self.y = np.concatenate((self.y, [vertex.pose[1]]), axis=0)
-            self.center = np.array([np.mean(self.x), np.mean(self.y)]) # center of vertex
-            # print('x = ', self.x)
-            # print('y = ', self.y)
-            # print('center = ', self.center)
+            self.center = np.array([np.mean(self.x), np.mean(self.y)]) # center of now whole vertex
             if last_vertex >= 0:
                 link = [[temp_name, temp_id], [vertex.robot_name, vertex.id]]
                 self.edge.append(Edge(id=self.edge_id, link=link))
             self.edge_id += 1
         else:# matched
             if current_node.robot_name != temp_name or current_node.id != temp_id:#类似于形成自我回环的情况，这里是可以做后端优化的
+                #matched with other robots' vertex
                 link = [[temp_name, temp_id], [current_node.robot_name, current_node.id]] # connect
                 self.edge.append(Edge(id=self.edge_id, link=link))
                 self.edge_id += 1
@@ -147,6 +144,7 @@ class TopologicalMap:
         if vertex_id == -1:
             pass
         frontiers = get_frontier_points(picked_vertex.localMap)#返回一系列边界中心
+        print("frontiers0 = ",frontiers[0])
         temp_fd = []
         temp_fp = []
         temp_nd = []

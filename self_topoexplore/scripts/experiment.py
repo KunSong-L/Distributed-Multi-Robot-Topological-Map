@@ -18,6 +18,8 @@ class ExpNode:
         self.start_time = None
         self.end_time = None
         self.exp_time = None
+        self.map_resolution = 0.01
+        self.map_size = 600/self.map_resolution ** 2
         rospy.Subscriber("/start_exp", String, self.exp_start_callback)
         self.exp_start = 0
         self.exp_done = 0
@@ -40,7 +42,7 @@ class ExpNode:
         self.map = np.asarray(data.data).reshape(shape)
         map_size = np.count_nonzero(self.map>=0)
         map_size -= np.count_nonzero(self.map==1)
-        explore_rate = map_size / 114800
+        explore_rate = map_size / self.map_size
         # print(explore_rate)
         # print(map_size)
         if explore_rate>0.99 and self.exp_done==0:

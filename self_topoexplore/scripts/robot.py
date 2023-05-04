@@ -92,7 +92,7 @@ class RobotNode:
         self.grid_map_ready = 0
         self.tf_transform_ready = 0
         self.cv_bridge = CvBridge()
-
+        self.map_resolution = rospy.get_param('map_resolution', 0.01)
         #topomap
         self.map = TopologicalMap(robot_name=robot_name, threshold=0.97)
         self.last_vertex = -1
@@ -217,16 +217,15 @@ class RobotNode:
         current_pose = copy.deepcopy(self.pose)
         vertex = Vertex(robot_name, id=-1, pose=current_pose, descriptor=feature)
         self.last_vertex, self.current_node, matched_flag = self.map.add(vertex, self.last_vertex, self.current_node)
-        if matched_flag==0:
+        if matched_flag==0:# add a new vertex
             #create a new one
             while self.grid_map_ready==0 or self.tf_transform_ready==0:
                 time.sleep(0.5)
             # 1. set and publish the topological map visulization markers
-
             localMap = self.grid_map
             self.map.vertex[-1].localMap = localMap #every vertex contains local map
             self.detect_loop = 0
-            picked_vertex_id = self.map.upgradeFrontierPoints(self.last_vertex)
+            picked_vertex_id = self.map.upgradeFrontierPoints(self.last_vertex,resolution=self.map_resolution)
 
             marker_array = MarkerArray()
             marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL)
@@ -482,8 +481,8 @@ class RobotNode:
                     if np.sqrt(np.sum(np.square(position-vertex_position))) < 100:
                         location = [0, 0]
                         shape = self.global_map.shape
-                        location[0] = self.current_loc[0] + int((self.pose[0] - vertex_position[0])/0.05)
-                        location[1] = self.current_loc[1] - int((self.pose[1] - vertex_position[1])/0.05)
+                        location[0] = self.current_loc[0] + int((self.pose[0] - vertex_position[0])/self.map_resolution)
+                        location[1] = self.current_loc[1] - int((self.pose[1] - vertex_position[1])/self.map_resolution)
                         temp_map = self.global_map[max(location[0]-rr,0):min(location[0]+rr,shape[0]), max(location[1]-rr,0):min(location[1]+rr, shape[1])]
                         self.map.vertex[i].localMap = temp_map
                         old_ud = self.map.vertex[i].navigableDirection
