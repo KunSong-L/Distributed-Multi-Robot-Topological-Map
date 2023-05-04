@@ -144,7 +144,7 @@ class TopologicalMap:
         if vertex_id == -1:
             pass
         frontiers = get_frontier_points(picked_vertex.localMap)#返回一系列边界中心
-        print("frontiers0 = ",frontiers[0])
+
         temp_fd = []
         temp_fp = []
         temp_nd = []
@@ -154,24 +154,8 @@ class TopologicalMap:
             current_pose = frontP
             dis = np.sqrt(np.sum(np.square(front-center))) * resolution
             dis += 4 #?
-            if center[0]>=front[0]:#没看懂这部分角度怎么计算的
-                if center[1] >=front[1]:#3象限  3象限
-                    theta = np.arctan((center[0]-front[0])/(center[1]-front[1]))
-                    angle = math.degrees(theta) - 180
-                    # print('in first quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
-                else:#2象限 4象限
-                    theta = np.arctan((center[0]-front[0])/(front[1]-center[1]))
-                    angle = - math.degrees(theta)
-                    # print('in second quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
-            else:
-                if center[1] >=front[1]:#1象限  2象限
-                    theta = np.arctan((center[1]-front[1])/(front[0]-center[0]))
-                    angle = 90 + math.degrees(theta)
-                    # print('in third quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
-                else:#4象限   1象限
-                    theta = np.arctan((front[0]-center[0])/(front[1]-center[1]))
-                    angle = math.degrees(theta)
-                    # print('in fourth quadrant--','origin data is ', center[0],'  ', center[1],'  ',front[0],'  ',front[1],  'changed data is: ', angle)
+            angle = math.degrees(math.atan2(center[1]-front[1],center[0]-front[0])) # not tested
+
             odom_angle = math.radians(angle + self.offset_angle) # 后面没仔细看，写的太差了
             map_angle = math.radians(angle)
             front_in_map = copy.deepcopy(frontP)

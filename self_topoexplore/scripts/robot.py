@@ -264,7 +264,8 @@ class RobotNode:
 
             goal_message, _ = self.get_move_goal(robot_name, position, euler, 0)
             goal_marker = self.get_goal_marker(robot_name, position, euler, 0)
-            self.actoinclient.send_goal(goal_message)
+            
+            self.actoinclient.send_goal(goal_message)#why the robot should go to now position
             self.goal_pub.publish(goal_marker)
             
             # 3. choose navigableDirection
@@ -408,22 +409,23 @@ class RobotNode:
         except:
             pass
 
-    def get_move_goal(self, robot_name, last_pose, nextmove, basic_length=4)-> MoveBaseGoal():
+    def get_move_goal(self, robot_name, last_pose, next_angle, basic_length=4)-> MoveBaseGoal():
+            #next angle should be next goal direction
             goal_message = MoveBaseGoal()
             goal_message.target_pose.header.frame_id = robot_name + "/map"
             goal_message.target_pose.header.stamp = rospy.Time.now()
-            euler = R.from_quat(self.rotation).as_euler('xyz', degrees=True)[2]
-            orientation = R.from_euler('z', nextmove+euler, degrees=True).as_quat()
+            now_angle = R.from_quat(self.rotation).as_euler('xyz', degrees=True)[2]#robot pose
+            orientation = R.from_euler('z', next_angle+now_angle, degrees=True).as_quat()
             goal_message.target_pose.pose.orientation.x = orientation[0]
             goal_message.target_pose.pose.orientation.y = orientation[1]
             goal_message.target_pose.pose.orientation.z = orientation[2]
             goal_message.target_pose.pose.orientation.w = orientation[3]
 
             pose = Point()
-            nextmove = math.radians(nextmove)
-            theta = math.radians(euler)
-            x = last_pose[0] + basic_length * np.cos(nextmove)
-            y = last_pose[1] + basic_length * np.sin(nextmove)
+            next_angle = math.radians(next_angle)
+            theta = math.radians(now_angle)
+            x = last_pose[0] + basic_length * np.cos(next_angle)
+            y = last_pose[1] + basic_length * np.sin(next_angle)
             goal = np.array([x, y])
             pose.x = x*np.cos(theta)-y*np.sin(theta) + self.tf_transform[0]
             pose.y = y*np.cos(theta)+x*np.sin(theta) + self.tf_transform[1]
@@ -431,22 +433,22 @@ class RobotNode:
 
             return goal_message, goal
 
-    def get_goal_marker(self, robot_name, last_pose, nextmove, basic_length=4) -> PoseStamped():
+    def get_goal_marker(self, robot_name, last_pose, next_angle, basic_length=4) -> PoseStamped():
         goal_marker = PoseStamped()
         goal_marker.header.frame_id = robot_name + "/map"
         goal_marker.header.stamp = rospy.Time.now()
-        euler = R.from_quat(self.rotation).as_euler('xyz', degrees=True)[2]
-        orientation = R.from_euler('z', nextmove+euler, degrees=True).as_quat()
+        now_angle = R.from_quat(self.rotation).as_euler('xyz', degrees=True)[2]
+        orientation = R.from_euler('z', next_angle+now_angle, degrees=True).as_quat()
         goal_marker.pose.orientation.x = orientation[0]
         goal_marker.pose.orientation.y = orientation[1]
         goal_marker.pose.orientation.z = orientation[2]
         goal_marker.pose.orientation.w = orientation[3]
 
         pose = Point()
-        nextmove = math.radians(nextmove)
-        theta = math.radians(euler)
-        x = last_pose[0] + basic_length * np.cos(nextmove)
-        y = last_pose[1] + basic_length * np.sin(nextmove)
+        next_angle = math.radians(next_angle)
+        theta = math.radians(now_angle)
+        x = last_pose[0] + basic_length * np.cos(next_angle)
+        y = last_pose[1] + basic_length * np.sin(next_angle)
         pose.x = x*np.cos(theta)-y*np.sin(theta) + self.tf_transform[0]
         pose.y = y*np.cos(theta)+x*np.sin(theta) + self.tf_transform[1]
         goal_marker.pose.position = pose
