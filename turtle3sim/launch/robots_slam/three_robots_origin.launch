@@ -39,6 +39,6 @@
     <param name="robot_name" value="robot3"/>
   </node>
 
-  <rosparam param="map_resolution">0.01</rosparam>
+  <rosparam param="map_resolution">0.05</rosparam>
   
 </launch>

@@ -92,7 +92,7 @@ class RobotNode:
         self.grid_map_ready = 0
         self.tf_transform_ready = 0
         self.cv_bridge = CvBridge()
-        self.map_resolution = rospy.get_param('map_resolution', 0.01)
+        self.map_resolution = float(rospy.get_param('map_resolution', 0.01))
         #topomap
         self.map = TopologicalMap(robot_name=robot_name, threshold=0.97)
         self.last_vertex = -1
@@ -369,6 +369,7 @@ class RobotNode:
 
     def map_grid_callback(self, data):
         #generate grid map and global grid map
+        range = int(6/self.map_resolution)
         self.global_map_info = data.info
         shape = (data.info.height, data.info.width)
         timenow = rospy.Time.now()
@@ -380,7 +381,7 @@ class RobotNode:
             #data origin position = -13, -12, 0
             self.current_loc[0] = int((tf_transform[1] - data.info.origin.position.y)/data.info.resolution)
             self.current_loc[1] = int((tf_transform[0] - data.info.origin.position.x)/data.info.resolution)
-            range = 120
+            
             self.global_map = np.asarray(data.data).reshape(shape)
             #获取当前一个小范围的grid map
             self.grid_map = self.global_map[max(self.current_loc[0]-range,0):min(self.current_loc[0]+range,shape[0]), max(self.current_loc[1]-range,0):min(self.current_loc[1]+range, shape[1])]

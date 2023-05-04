@@ -5,7 +5,7 @@ from networkx.generators import social
 from scipy.spatial.transform import Rotation as R
 from sklearn.cluster import DBSCAN
 import copy
-
+import rospy
 
 def if_frontier(window):
     if 100 in window: # 障碍物
@@ -19,10 +19,13 @@ def if_frontier(window):
 
 def get_frontier_points(map, resolution=0.01) -> list:
     shape = map.shape
-    kernel_size = 4
+    kernel_size = int(0.1/resolution)
+    #TODO
+    print("kernel size = ",kernel_size)
+    min_num = 16
     frontier_points = []
-    for i in range(shape[0]-kernel_size):
-        for j in range(shape[1]-kernel_size):
+    for i in range(0,shape[0]-kernel_size,kernel_size//2):
+        for j in range(shape[1]-kernel_size,kernel_size//2):
             if if_frontier(map[i:i+kernel_size, j:j+kernel_size]): #找到已知和未知的边界
                 frontier_points.append([i+2, j+2])
     if frontier_points:
@@ -36,11 +39,13 @@ def get_frontier_points(map, resolution=0.01) -> list:
     if frontier_points:
         for point in points_list:
             x,y = zip(*point)
-            if len(x) < 100:#直接过滤掉小于100个边界点的情况
+            if len(x) < min_num:#直接过滤掉小于100个边界点的情况
+                print("len x = ",len(x))
                 continue
             center_tmp = (int(np.mean(x)), int(np.mean(y)))
             centers.append(center_tmp)
     
+    print("get center num = ", len(centers))
     return centers
 
 class Vertex:
@@ -78,6 +83,7 @@ class TopologicalMap:
         self.center = None
         self.center_dict = dict()
         self.offset_angle = 0
+        self.map_resolution = float(rospy.get_param('map_resolution', 0.01))
     
     def insert(self, vertex=None, edge=None) -> None:
         self.vertex.append(vertex)
@@ -143,20 +149,21 @@ class TopologicalMap:
         has_node = 0
         if vertex_id == -1:
             pass
-        frontiers = get_frontier_points(picked_vertex.localMap)#返回一系列边界中心
+        frontiers = get_frontier_points(picked_vertex.localMap,resolution=self.map_resolution)#返回一系列边界中心
 
         temp_fd = []
         temp_fp = []
         temp_nd = []
         for front in frontiers:
             front = np.array([front[0], front[1]])
+            print("now front = ", front)
             frontP = np.array([picked_vertex.pose[0], picked_vertex.pose[1]])
             current_pose = frontP
             dis = np.sqrt(np.sum(np.square(front-center))) * resolution
             dis += 4 #?
             angle = math.degrees(math.atan2(center[1]-front[1],center[0]-front[0])) # not tested
 
-            odom_angle = math.radians(angle + self.offset_angle) # 后面没仔细看，写的太差了
+            odom_angle = math.radians(angle + self.offset_angle) 
             map_angle = math.radians(angle)
             front_in_map = copy.deepcopy(frontP)
             frontP[0] += dis * np.cos(odom_angle)
