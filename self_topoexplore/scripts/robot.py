@@ -143,7 +143,7 @@ class RobotNode:
             robot_name+"/ud", UnexploredDirectionsMsg, queue_size=1)
         self.start_pub = rospy.Publisher(
             "/start_exp", String, queue_size=1) #发一个start
-        
+        self.frontier_publisher = rospy.Publisher(robot_name+'/frontier_points', Marker, queue_size=10)
             
 
         # rospy.Subscriber(
@@ -208,6 +208,7 @@ class RobotNode:
 
             if self.init_map_angle_ready == 0:
                 self.map_angle = self.pose[2]
+                print("finish create map, map angle = ", self.map_angle)
                 self.map.offset_angle = self.map_angle
                 self.init_map_angle_ready = 1
         except:
@@ -231,9 +232,37 @@ class RobotNode:
             marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL)
             marker_array.markers.append(marker_message)
             self.marker_pub.publish(marker_array) #DELETEALL 操作，防止重影
+            
+
+            # ----------visualize frontier------------
+
+            frontier_marker = Marker()
+            now = rospy.Time.now()
+            frontier_marker.header.frame_id = robot_name + "/map"
+            frontier_marker.header.stamp = now
+            frontier_marker.ns = "frontier_point"
+            frontier_marker.type = Marker.POINTS
+            frontier_marker.action = Marker.ADD
+            frontier_marker.pose.orientation.w = 1.0
+            frontier_marker.scale.x = 0.2
+            frontier_marker.scale.y = 0.2
+            frontier_marker.color.r = 1.0
+            frontier_marker.color.a = 0.5
+
+            for now_vertex in self.map.vertex:
+                now_vertex_pose = now_vertex.pose
+                for frontier_pos in now_vertex.frontierPoints:
+                    point_msg = Point()
+                    point_msg.x = frontier_pos[0] + now_vertex_pose[0]
+                    point_msg.y = frontier_pos[1] + now_vertex_pose[1]
+                    point_msg.z = 0.2
+                    frontier_marker.points.append(point_msg)
+
+            self.frontier_publisher.publish(frontier_marker)
+            # --------------finish visualize frontier---------------
+
             marker_array = MarkerArray()
             markerid = 0
-
             for vertex in self.map.vertex:
                 if vertex.robot_name != robot_name:
                     marker_message = set_marker(robot_name, markerid, vertex.pose)#other color
@@ -257,18 +286,8 @@ class RobotNode:
             self.marker_pub.publish(marker_array)
             self.edge_pub.publish(edge_array)
 
-            # print(' ')
-            # 2. publish next goal
-            position = current_pose[0:2]
-            euler = current_pose[2]
-
-            goal_message, _ = self.get_move_goal(robot_name, position, euler, 0)
-            goal_marker = self.get_goal_marker(robot_name, position, euler, 0)
             
-            self.actoinclient.send_goal(goal_message)#why the robot should go to now position
-            self.goal_pub.publish(goal_marker)
-            
-            # 3. choose navigableDirection
+            # 2. choose navigableDirection
             navigableDirection = self.map.vertex[picked_vertex_id].navigableDirection
             nextmove = 0
             directionID = 0
@@ -278,46 +297,46 @@ class RobotNode:
             dis_with_vertices = [0 for i in range(len(self.map.vertex[picked_vertex_id].frontierPoints))]
             epos = 0.2
 
-            if len(navigableDirection) == 0:#waiting for assign a new direction
+            if len(navigableDirection) == 0:#no navigable Dirention
                 self.no_place_to_go = 1
             else:
+                # choose where to go
                 for i in range(len(self.map.vertex[picked_vertex_id].frontierPoints)):
                     position_tmp = self.map.vertex[picked_vertex_id].frontierPoints[i]
-                    dis_tmp = np.sqrt(np.sum(np.square(position_tmp-self.map.center)))#the point farthest from the center of the map
+                    now_vertex_pose = np.array(self.map.vertex[picked_vertex_id].pose[0:2])
+                    # map.center : center of vertex
+                    dis_tmp = np.sqrt(np.sum(np.square(position_tmp + now_vertex_pose - self.map.center)))#the point farthest from the center of the map
                     dis_scores[i] += epos * dis_tmp
-                    for j in range(len(self.meeted_robot)):
+                    for j in range(len(self.meeted_robot)):# remain considering, deal with multi robot part
                         dis_with_other_centers[j] = np.sqrt(np.sum(np.square(position_tmp-self.map.center_dict[self.meeted_robot[j]])))
                         dis_scores[i] += dis_with_other_centers[j] * (1-epos)
-                    #这个感觉有点问题
-                    #TODO
-                    dis_scores[i] += abs(nextmove - self.last_nextmove)#？？？
+
                 #choose max dis as next move
                 for i in range(len(dis_scores)):
                     if dis_scores[i] > max_dis:
                         max_dis = dis_scores[i]
                         directionID = i
-                nextmove = navigableDirection[directionID]
-                #这里应该不需要判断
-                if len(self.map.vertex[picked_vertex_id].navigableDirection)!=0:
+                move_direction = navigableDirection[directionID]
+                
+                # delete this frontier
+                if len(self.map.vertex[picked_vertex_id].navigableDirection)!=0:# choose this navigation direction
                     del self.map.vertex[picked_vertex_id].navigableDirection[directionID]
                     ud_message = UnexploredDirectionsMsg()
                     ud_message.robot_name = self.map.vertex[picked_vertex_id].robot_name
                     ud_message.vertexID = self.map.vertex[picked_vertex_id].id
                     ud_message.directionID = directionID
                     self.unexplore_direction_pub.publish(ud_message)#publish an unexplored direction
-                #delete this frontier
                 if len(self.map.vertex[picked_vertex_id].frontierDistance)!=0:
                     basic_length = self.map.vertex[picked_vertex_id].frontierDistance[directionID]
                     del self.map.vertex[picked_vertex_id].frontierDistance[directionID]
                 if len(self.map.vertex[picked_vertex_id].frontierPoints)!=0:
                     del self.map.vertex[picked_vertex_id].frontierPoints[directionID]
-                self.detect_loop = 1#assign as detect loop
+                self.detect_loop = 1#assign as detect loop?
                 
-                nextmove += self.map_angle
                 #move goal:now_pos + basic_length+offset;  now_angle + nextmove
-                self.last_nextmove = nextmove
-                goal_message, self.goal = self.get_move_goal(robot_name, current_pose, nextmove, basic_length+offset)
-                goal_marker = self.get_goal_marker(robot_name, current_pose, nextmove, basic_length+offset)
+                self.last_nextmove = move_direction
+                goal_message, self.goal = self.get_move_goal(robot_name, current_pose, move_direction, basic_length+offset)#offset = 0
+                goal_marker = self.get_goal_marker(robot_name, current_pose, move_direction, basic_length+offset)
                 self.actoinclient.send_goal(goal_message)
                 self.goal_pub.publish(goal_marker)
 
@@ -357,7 +376,6 @@ class RobotNode:
                     goal_marker = self.get_goal_marker(robot_name, point, nextmove, basic_length+offset)
                     self.actoinclient.send_goal(goal_message)
                     self.goal_pub.publish(goal_marker)
-                    print(robot_name, "find a new goal")
                     find_a_goal = 1
                     break
                 del distance_list[index]
@@ -410,48 +428,45 @@ class RobotNode:
         except:
             pass
 
-    def get_move_goal(self, robot_name, last_pose, next_angle, basic_length=4)-> MoveBaseGoal():
+    def get_move_goal(self, robot_name, now_robot_pose, move_direction, move_length=4)-> MoveBaseGoal():
             #next angle should be next goal direction
             goal_message = MoveBaseGoal()
             goal_message.target_pose.header.frame_id = robot_name + "/map"
             goal_message.target_pose.header.stamp = rospy.Time.now()
-            now_angle = R.from_quat(self.rotation).as_euler('xyz', degrees=True)[2]#robot pose
-            orientation = R.from_euler('z', next_angle+now_angle, degrees=True).as_quat()
+
+            orientation = R.from_euler('z', move_direction, degrees=True).as_quat()
             goal_message.target_pose.pose.orientation.x = orientation[0]
             goal_message.target_pose.pose.orientation.y = orientation[1]
             goal_message.target_pose.pose.orientation.z = orientation[2]
             goal_message.target_pose.pose.orientation.w = orientation[3]
 
             pose = Point()
-            next_angle = math.radians(next_angle)
-            theta = math.radians(now_angle)
-            x = last_pose[0] + basic_length * np.cos(next_angle)
-            y = last_pose[1] + basic_length * np.sin(next_angle)
+            move_direction = math.radians(move_direction)
+            x = now_robot_pose[0] + move_length * np.cos(move_direction)
+            y = now_robot_pose[1] + move_length * np.sin(move_direction)
             goal = np.array([x, y])
-            pose.x = x*np.cos(theta)-y*np.sin(theta) + self.tf_transform[0]
-            pose.y = y*np.cos(theta)+x*np.sin(theta) + self.tf_transform[1]
+            pose.x = x
+            pose.y = y
             goal_message.target_pose.pose.position = pose
 
             return goal_message, goal
 
-    def get_goal_marker(self, robot_name, last_pose, next_angle, basic_length=4) -> PoseStamped():
+    def get_goal_marker(self, robot_name, now_robot_pose, move_direction, move_length=4) -> PoseStamped():
         goal_marker = PoseStamped()
         goal_marker.header.frame_id = robot_name + "/map"
         goal_marker.header.stamp = rospy.Time.now()
-        now_angle = R.from_quat(self.rotation).as_euler('xyz', degrees=True)[2]
-        orientation = R.from_euler('z', next_angle+now_angle, degrees=True).as_quat()
+        
+        orientation = R.from_euler('z', move_direction, degrees=True).as_quat()
         goal_marker.pose.orientation.x = orientation[0]
         goal_marker.pose.orientation.y = orientation[1]
         goal_marker.pose.orientation.z = orientation[2]
         goal_marker.pose.orientation.w = orientation[3]
 
         pose = Point()
-        next_angle = math.radians(next_angle)
-        theta = math.radians(now_angle)
-        x = last_pose[0] + basic_length * np.cos(next_angle)
-        y = last_pose[1] + basic_length * np.sin(next_angle)
-        pose.x = x*np.cos(theta)-y*np.sin(theta) + self.tf_transform[0]
-        pose.y = y*np.cos(theta)+x*np.sin(theta) + self.tf_transform[1]
+        move_direction = math.radians(move_direction)
+        pose.x = now_robot_pose[0] + move_length * np.cos(move_direction)
+        pose.y = now_robot_pose[1] + move_length * np.sin(move_direction)
+
         goal_marker.pose.position = pose
 
         return goal_marker
