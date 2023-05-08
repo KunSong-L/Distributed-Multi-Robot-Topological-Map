@@ -81,7 +81,7 @@ class RobotNode:
         self.init_map_angle_ready = 0
         self.map_orientation = None
         self.map_angle = None #Yaw angle of map
-        self.current_loc = [0,0]
+        self.current_loc_pixel = [0,0]
         self.erro_count = 0
         self.no_place_to_go = 0
         self.goal = np.array([10000.0, 10000.0])
@@ -146,19 +146,19 @@ class RobotNode:
         self.frontier_publisher = rospy.Publisher(robot_name+'/frontier_points', Marker, queue_size=10)
             
 
-        # rospy.Subscriber(
-        #     robot_name+"/odom", Odometry, self.loop_detect_callback, queue_size=1)
+        rospy.Subscriber(
+            robot_name+"/panoramic", Image, self.loop_detect_callback, queue_size=1)#data is not important
 
         rospy.Subscriber(
             robot_name+"/panoramic", Image, self.map_panoramic_callback, queue_size=1)
         rospy.Subscriber(
             robot_name+"/map", OccupancyGrid, self.map_grid_callback, queue_size=1)
 
-        # for robot in robot_list:
-        #     rospy.Subscriber(
-        #         robot+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1)
-        #     rospy.Subscriber(
-        #         robot+"/ud", UnexploredDirectionsMsg, self.unexplored_directions_callback, robot, queue_size=1)
+        for robot in robot_list:
+            rospy.Subscriber(
+                robot+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1)
+            rospy.Subscriber(
+                robot+"/ud", UnexploredDirectionsMsg, self.unexplored_directions_callback, robot, queue_size=1)
         
         rospy.Subscriber(
             robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
@@ -395,21 +395,21 @@ class RobotNode:
         self.tf_listener.waitForTransform(data.header.frame_id, robot_name+"/base_footprint", timenow, rospy.Duration(0.5))
         try:
             tf_transform, rotation = self.tf_listener.lookupTransform(data.header.frame_id, robot_name+"/base_footprint", timenow)
-            self.current_loc = [0,0]
+            self.current_loc_pixel = [0,0]
             #data origin position = -13, -12, 0
-            self.current_loc[0] = int((tf_transform[1] - data.info.origin.position.y)/data.info.resolution)
-            self.current_loc[1] = int((tf_transform[0] - data.info.origin.position.x)/data.info.resolution)
+            self.current_loc_pixel[0] = int((tf_transform[1] - data.info.origin.position.y)/data.info.resolution)
+            self.current_loc_pixel[1] = int((tf_transform[0] - data.info.origin.position.x)/data.info.resolution)
             
             self.global_map = np.asarray(data.data).reshape(shape)
             #获取当前一个小范围的grid map
-            self.grid_map = self.global_map[max(self.current_loc[0]-range,0):min(self.current_loc[0]+range,shape[0]), max(self.current_loc[1]-range,0):min(self.current_loc[1]+range, shape[1])]
+            self.grid_map = self.global_map[max(self.current_loc_pixel[0]-range,0):min(self.current_loc_pixel[0]+range,shape[0]), max(self.current_loc_pixel[1]-range,0):min(self.current_loc_pixel[1]+range, shape[1])]
             self.grid_map[np.where(self.grid_map==-1)] = 255
             if robot_name == 'robot1':
                 self.global_map[np.where(self.global_map==-1)] = 255
-                temp = self.global_map[max(self.current_loc[0]-range,0):min(self.current_loc[0]+range,shape[0]), max(self.current_loc[1]-range,0):min(self.current_loc[1]+range, shape[1])]
+                temp = self.global_map[max(self.current_loc_pixel[0]-range,0):min(self.current_loc_pixel[0]+range,shape[0]), max(self.current_loc_pixel[1]-range,0):min(self.current_loc_pixel[1]+range, shape[1])]
                 temp[np.where(temp==-1)] = 125
-                cv2.imwrite(debug_path+"map.jpg", temp)
-                cv2.imwrite(debug_path+"/globalmap.jpg", self.global_map)
+                # cv2.imwrite(debug_path+"map.jpg", temp)
+                # cv2.imwrite(debug_path+"/globalmap.jpg", self.global_map)
             self.grid_map_ready = 1
         except:
             # print("tf listener fails")
@@ -475,12 +475,16 @@ class RobotNode:
         position = self.pose
         position = np.array([position[0], position[1]])
         if self.detect_loop:
+            #delete unexplored direction based on distance between now robot pose and frontier point position
             for i in range(len(self.map.vertex)):
                 meeted = list()
                 vertex = self.map.vertex[i]
+                now_vertex_pose = np.array([vertex.pose[0],vertex.pose[1]])
+
                 for j in range(len(vertex.navigableDirection)-1, -1, -1):
-                    unexplored = vertex.frontierPoints[j]
-                    if np.sqrt(np.sum(np.square(position-unexplored))) < 3:
+                    unexplored = vertex.frontierPoints[j] + now_vertex_pose # change into map frame
+
+                    if np.sqrt(np.sum(np.square(position-unexplored))) < 3:#delete unexplored position
                         meeted.append(j)
                 for index in meeted:
                     del self.map.vertex[i].navigableDirection[index]
@@ -491,7 +495,12 @@ class RobotNode:
                     ud_message.vertexID = vertex.id
                     ud_message.directionID = index
                     self.unexplore_direction_pub.publish(ud_message)
-            rr = 150
+
+            #delete unexplored direction based on direction
+            #这部分感觉可以删去
+            if self.reference_vertex == None:
+                self.reference_vertex = self.current_node
+            rr = int(6/self.map_resolution)
             for i in range(len(self.map.vertex)):
                 vertex = self.map.vertex[i]
                 vertex_position = np.array([vertex.pose[0], vertex.pose[1]])
@@ -499,10 +508,10 @@ class RobotNode:
                     if np.sqrt(np.sum(np.square(position-vertex_position))) < 100:
                         location = [0, 0]
                         shape = self.global_map.shape
-                        location[0] = self.current_loc[0] + int((self.pose[0] - vertex_position[0])/self.map_resolution)
-                        location[1] = self.current_loc[1] - int((self.pose[1] - vertex_position[1])/self.map_resolution)
+                        location[0] = self.current_loc_pixel[0] + int((self.pose[0] - vertex_position[0])/self.map_resolution)
+                        location[1] = self.current_loc_pixel[1] - int((self.pose[1] - vertex_position[1])/self.map_resolution)
                         temp_map = self.global_map[max(location[0]-rr,0):min(location[0]+rr,shape[0]), max(location[1]-rr,0):min(location[1]+rr, shape[1])]
-                        self.map.vertex[i].localMap = temp_map
+                        self.map.vertex[i].localMap = temp_map #renew local map
                         old_ud = self.map.vertex[i].navigableDirection
                         new_ud = self.map.vertex[i].navigableDirection
                         delete_list = []
@@ -519,7 +528,9 @@ class RobotNode:
                             ud_message.vertexID = self.map.vertex[i].id
                             ud_message.directionID = uds
                             self.unexplore_direction_pub.publish(ud_message)
-                if np.linalg.norm(position-vertex_position) < 2.5:
+
+                #TODO
+                if np.linalg.norm(position-vertex_position) < 2.5:#现在机器人位置距离节点位置很近
                     new_vertex_on_path = 1
                     for svertex in self.vertex_on_path:
                         if svertex.robot_name == vertex.robot_name and svertex.id == vertex.id:
@@ -528,11 +539,11 @@ class RobotNode:
                         self.vertex_on_path.append(vertex)
                 if np.linalg.norm(self.goal - vertex_position) < 3:
                     self.vertex_on_path.append(vertex)
+        
         if len(self.map.vertex) != 0:
             topomap_message = TopomapToMessage(self.map)
-            self.topomap_pub.publish(topomap_message)
-        if self.reference_vertex == None:
-            self.reference_vertex = self.current_node
+            self.topomap_pub.publish(topomap_message) # publish topomap important!
+        
         if len(self.vertex_on_path) >= 3:
             self.no_place_to_go = 1
             print(robot_name, "no place to go")
@@ -613,6 +624,7 @@ class RobotNode:
                         self.vertex_dict[vertex.robot_name].append(vertex.id)
 
     def unexplored_directions_callback(self, data, rn):
+        #delete this direction
         for i in range(len(self.map.vertex)):
             vertex = self.map.vertex[i]
             if vertex.robot_name == data.robot_name:

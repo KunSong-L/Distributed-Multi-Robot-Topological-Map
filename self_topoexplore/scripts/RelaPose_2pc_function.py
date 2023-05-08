@@ -114,8 +114,8 @@ def Fast_Robutst_2PC(pc1,pc2):
 
 
 def planar_motion_calcu(img1,img2,k1,k2):
-    method = 0
-    show_img = 0
+    method = 1
+    show_img = 1
     use_knn_matcher = 1
     if method == 0:
         # Initiate ORB detector
@@ -204,35 +204,33 @@ def planar_motion_calcu(img1,img2,k1,k2):
     maxDistance = [5,5]
     best_model, best_inlier_index, inter_num = ransac(data,fitLineFcn,evalLineFcn,sample_size,maxDistance,guess_inliers = 0.4)
 
-
+    #return yaw and translation angle in degree
     return best_model
 
 if __name__ == '__main__':
-    import matplotlib
-    import matplotlib.pyplot as plt
+    img1 = cv.imread("/home/master/debug/robot1.jpg")
+    img2 = cv.imread("/home/master/debug/robot2.jpg")
+    # img1 = cv.cvtColor(img1,cv.COLOR_BGR2GRAY)
+    # img2 = cv.cvtColor(img2,cv.COLOR_BGR2GRAY)
+    cam_rotation = [[0,0,0],[-0.2,0.1,math.pi/2],[-0.4,0.0,math.pi],[-0.2,-0.1,-math.pi/2]]
+    height = img1.shape[0]
+    widht = img1.shape[1]//4
+    img1_list = []
+    img2_list = []
+    for i in range(4):
+        img1_tmp = img1[0:height,i*widht:(i+1)*widht]
+        img2_tmp = img2[0:height,i*widht:(i+1)*widht]
 
-    max_iterations = 1000
-    
-    inlier_ratio_estimate = 0.3
+        img1_list.append(img1_tmp)
+        img2_list.append(img2_tmp)
 
-    # test data
-    n = 100
-    goal_inliers = n * 0.3
-    
-    x = 20*np.ones((n,1)) + np.random.random((n, 1))
-    y = 90*np.ones((n,1)) + np.random.random((n, 1))
-    index = np.arange(0,n)
-  
-    data =  np.concatenate((x,y),axis=1)
-    
-    # RANSAC
-    sample_size = 4
-    maxDistance = 10
-    best_model, best_inlier_index = ransac(data,fitLineFcn,evalLineFcn,sample_size,maxDistance,100,0.3)
 
-    print(best_model)
-    print(best_inlier_index)
-    plt.plot([0,n],[best_model[0],best_model[0]])
-    plt.scatter(index, x.T[0],c='r',s=1)
-    plt.scatter(index, y.T[0],c='b',s=1)
-    plt.show()
+
+    # read K
+    K1_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
+    K2_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
+    # plt.imshow(img1_list[0],cmap=plt.get_cmap('gray'))
+    # plt.show()
+    best_model = planar_motion_calcu(img1_list[0],img2_list[1],K1_mat,K2_mat)
+    # best_model = planar_motion_calcu(img1,img2,K1_mat,K2_mat)
+    
