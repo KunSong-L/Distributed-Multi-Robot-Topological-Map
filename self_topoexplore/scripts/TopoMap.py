@@ -48,7 +48,7 @@ def get_frontier_points(map, resolution=0.01) -> list:
 
 class Vertex:
 
-    def __init__(self, robot_name=None, id=None, pose=None, descriptor=None, localMap=None) -> None:
+    def __init__(self, robot_name=None, id=None, pose=None, descriptor=None, localMap=None, local_image=None) -> None:
         self.robot_name = robot_name
         self.id = id
         self.pose = pose
@@ -57,20 +57,21 @@ class Vertex:
         self.navigableDirection = []
         self.frontierPoints = []
         self.frontierDistance = []
+        self.local_image = local_image
 
 
 class Edge:
     
     def __init__(self, id, link) -> None:
         self.id = id
-        self.link = link
+        self.link = link # [[last_robot_name, last_robot_id], [now_robot_name, now_vertex_id]]
 
 
 class TopologicalMap:
     
     def __init__(self, robot_name='1', threshold=0.8) -> None:
         self.robot_name = robot_name
-        self.vertex = list()
+        self.vertex = list()#保存了所有节点
         self.edge = list()
         self.threshold = threshold
         self.vertex_id = -1

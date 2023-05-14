@@ -20,20 +20,15 @@ import actionlib
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from actionlib_msgs.msg import GoalStatusArray
 from gazebo_msgs.msg import ModelStates
-
 from self_topoexplore.msg import UnexploredDirectionsMsg
 from self_topoexplore.msg import TopoMapMsg
-
-
 from TopoMap import Vertex, Edge, TopologicalMap
 from utils.imageretrieval.imageretrievalnet import init_network
 from utils.imageretrieval.extract_feature import cal_feature
 from utils.topomap_bridge import TopomapToMessage, MessageToTopomap
-
 import torch
 from torch.utils.model_zoo import load_url
 from torchvision import transforms
-
 import os
 import cv2
 from cv_bridge import CvBridge
@@ -43,16 +38,20 @@ from scipy.spatial.transform import Rotation as R
 import math
 import time
 import copy
+from std_msgs.msg import Header
 
 from robot_function import *
+from RelaPose_2pc_function import *
 
 debug_path = "/home/master/debug/"
 
 class RobotNode:
     def __init__(self, robot_name, robot_list):#输入当前机器人，其他机器人的id list
         rospack = rospkg.RosPack()
+        self.self_robot_name = robot_name
         path = rospack.get_path('self_topoexplore')
-
+        # in simulation environment each robot has same intrinsic matrix
+        self.K_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
         #network part
         network = rospy.get_param("~network")
         self.network_gpu = rospy.get_param("~platform")
@@ -110,13 +109,29 @@ class RobotNode:
             self.relative_position[item] = [0, 0, 0]
             self.relative_orientation[item] = 0
 
+
+        self.topomap_matched_score = 0.65
         # get tf
         self.tf_listener = tf.TransformListener()
         self.tf_listener2 = tf.TransformListener()
         self.tf_transform = None
         self.rotation = None
         
+        #relative pose estimation
+        self.image_req_sub = rospy.Subscriber('/request_image', String, self.receive_image_req_callback)
+        self.image_data_sub = None
 
+        self.relative_pose_image = None
+        self.image_ready = 0
+        self.image_req_publisher = rospy.Publisher('/request_image', String, queue_size=1)
+        self.image_data_pub = rospy.Publisher(robot_name+'/relative_pose_est_image', Image, queue_size=1)#发布自己节点的图片
+
+        x_offset = 0.1
+        y_offset = 0.2
+        self.cam_trans = [[x_offset,0,0],[0,y_offset,math.pi/2],[-x_offset,0.0,math.pi],[0,-y_offset,-math.pi/2]] # camera position
+        self.estimated_vertex_pose = list() #["robot_i","robot_j",id1,id2,estimated_pose] suppose that i < j
+        self.map_frame_pose = dict() # map_frame_pose[robot_j] is [R_j,t_j] R_j 3x3
+        self.ready_for_topo_map = True
         #move base
         self.actoinclient = actionlib.SimpleActionClient(robot_name+'/move_base', MoveBaseAction)
         self.trajectory_point = None
@@ -148,7 +163,6 @@ class RobotNode:
 
         rospy.Subscriber(
             robot_name+"/panoramic", Image, self.loop_detect_callback, queue_size=1)#data is not important
-
         rospy.Subscriber(
             robot_name+"/panoramic", Image, self.map_panoramic_callback, queue_size=1)
         rospy.Subscriber(
@@ -185,6 +199,26 @@ class RobotNode:
         image_message.header.frame_id = robot_name+"/odom"
         self.panoramic_view_pub.publish(image_message)
 
+    def receive_image_callback(self, image):
+        self.relative_pose_image = self.cv_bridge.imgmsg_to_cv2(image)
+        self.image_ready = 1
+
+    def receive_image_req_callback(self, req):
+        #req: i_j_id
+        input_list = req.data.split()  # 将字符串按照空格分割成一个字符串列表
+        if input_list[1] in self.self_robot_name:
+            # publish image msg
+            image_index = int(input_list[2])
+            req_image = self.map.vertex[image_index].local_image
+            header = Header(stamp=rospy.Time.now())
+            image_msg = self.cv_bridge.cv2_to_imgmsg(req_image, encoding="mono8")
+            image_msg.header = header
+            self.image_data_pub.publish(image_msg) #finish publish message
+            print("robot = ",self.self_robot_name,"  publish image index = ",image_index)
+
+
+
+
     def map_panoramic_callback(self, panoramic):
         start_msg = String()
         start_msg.data = "Start!"
@@ -216,7 +250,7 @@ class RobotNode:
         # ----finish getting pose----
         
         current_pose = copy.deepcopy(self.pose)
-        vertex = Vertex(robot_name, id=-1, pose=current_pose, descriptor=feature)
+        vertex = Vertex(robot_name, id=-1, pose=current_pose, descriptor=feature, local_image=cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY))
         self.last_vertex, self.current_node, matched_flag = self.map.add(vertex, self.last_vertex, self.current_node)
         if matched_flag==0:# add a new vertex
             #create a new one
@@ -271,11 +305,14 @@ class RobotNode:
                 marker_array.markers.append(marker_message)
                 markerid += 1
                 direction_marker_id = 0
+            #visualize edge
+            #可视化edge就是把两个vertex的pose做一个连线
             edge_array = MarkerArray()
             for edge in self.map.edge:
                 num_count = 0
                 poses = []
                 for vertex in self.map.vertex:
+                    # find match
                     if (edge.link[0][0]==vertex.robot_name and edge.link[0][1]==vertex.id) or (edge.link[1][0]==vertex.robot_name and edge.link[1][1]==vertex.id):
                         poses.append(vertex.pose)
                         num_count += 1
@@ -307,6 +344,8 @@ class RobotNode:
                     # map.center : center of vertex
                     dis_tmp = np.sqrt(np.sum(np.square(position_tmp + now_vertex_pose - self.map.center)))#the point farthest from the center of the map
                     dis_scores[i] += epos * dis_tmp
+                    #TODO
+                    #需要修改这一部分
                     for j in range(len(self.meeted_robot)):# remain considering, deal with multi robot part
                         dis_with_other_centers[j] = np.sqrt(np.sum(np.square(position_tmp-self.map.center_dict[self.meeted_robot[j]])))
                         dis_scores[i] += dis_with_other_centers[j] * (1-epos)
@@ -337,7 +376,7 @@ class RobotNode:
                 self.last_nextmove = move_direction
                 goal_message, self.goal = self.get_move_goal(robot_name, current_pose, move_direction, basic_length+offset)#offset = 0
                 goal_marker = self.get_goal_marker(robot_name, current_pose, move_direction, basic_length+offset)
-                self.actoinclient.send_goal(goal_message)
+                # self.actoinclient.send_goal(goal_message)
                 self.goal_pub.publish(goal_marker)
 
         #deal with no place to go
@@ -497,7 +536,6 @@ class RobotNode:
                     self.unexplore_direction_pub.publish(ud_message)
 
             #delete unexplored direction based on direction
-            #这部分感觉可以删去
             if self.reference_vertex == None:
                 self.reference_vertex = self.current_node
             rr = int(6/self.map_resolution)
@@ -529,7 +567,6 @@ class RobotNode:
                             ud_message.directionID = uds
                             self.unexplore_direction_pub.publish(ud_message)
 
-                #TODO
                 if np.linalg.norm(position-vertex_position) < 2.5:#现在机器人位置距离节点位置很近
                     new_vertex_on_path = 1
                     for svertex in self.vertex_on_path:
@@ -539,7 +576,7 @@ class RobotNode:
                         self.vertex_on_path.append(vertex)
                 if np.linalg.norm(self.goal - vertex_position) < 3:
                     self.vertex_on_path.append(vertex)
-        
+
         if len(self.map.vertex) != 0:
             topomap_message = TopomapToMessage(self.map)
             self.topomap_pub.publish(topomap_message) # publish topomap important!
@@ -551,77 +588,101 @@ class RobotNode:
             self.reference_vertex = self.current_node
 
     def topomap_callback(self, topomap_message):
+        # receive topomap from other robots
+        if not self.ready_for_topo_map:
+            return
+        self.ready_for_topo_map = False
         Topomap = MessageToTopomap(topomap_message)
         matched_vertex = list()
         vertex_pair = dict()
-        if Topomap.vertex[0].robot_name in self.meeted_robot:
-            for vertex in Topomap.vertex:
-                if vertex.robot_name!=robot_name:
-                    if vertex.id not in self.vertex_dict[vertex.robot_name]:
-                        self.map.vertex.append(vertex)
-                        self.vertex_dict[vertex.robot_name].append(vertex.id)
-                        edge = Topomap.edge[-1]
-                        edge.id = self.map.edge_id
-                        self.map.edge_id += 1
-                        self.map.edge.append(edge)
-                        break
-        else:
-            for vertex in Topomap.vertex:
-                if vertex.robot_name not in self.map.center_dict.keys():
-                    self.map.center_dict[vertex.robot_name] = np.array([0.0, 0.0])
-                if vertex.robot_name not in self.vertex_dict.keys():
-                    self.vertex_dict[vertex.robot_name] = list()
-                elif (vertex.id in self.vertex_dict[vertex.robot_name]) or (vertex.robot_name==robot_name):
-                    pass
-                else:
-                    for svertex in self.map.vertex:
-                        if svertex.robot_name == vertex.robot_name:
-                            pass
-                        else:
-                            score = np.dot(vertex.descriptor.T, svertex.descriptor)
-                            if score > 0.75:
-                                print("matched:", svertex.robot_name, svertex.id, vertex.robot_name, vertex.id, score)
-                                if vertex.robot_name not in self.meeted_robot:
-                                    self.meeted_robot.append(vertex.robot_name)
-                                    self.relative_position[vertex.robot_name] = [svertex.pose[0]-vertex.pose[0], svertex.pose[1]-vertex.pose[1], svertex.pose.pose.position.z-vertex.pose.pose.position.z]
-                                matched_vertex.append(vertex)
-                                self.vertex_dict[vertex.robot_name].append(vertex.id)
-                                vertex_pair[vertex.id] = svertex.id
-            if len(matched_vertex)!=0:
-                for edge in Topomap.edge:
-                    if edge.link[0][1] in self.vertex_dict[edge.link[0][0]]:
-                        if edge.link[1][1] in self.vertex_dict[edge.link[1][0]] or edge.link[1][0]==robot_name:
-                            pass
-                        else:
-                            edge.link[0][0] = robot_name
-                            edge.link[0][1] = vertex_pair[edge.link[0][1]]
-                            edge.id = self.map.edge_id
-                            self.map.edge_id += 1
-                            self.map.edge.append(edge)
-                    elif edge.link[1][1] in self.vertex_dict[edge.link[1][0]]:
-                        if edge.link[0][1] in self.vertex_dict[edge.link[0][0]] or edge.link[0][0]==robot_name:
-                            pass
-                        else:
-                            edge.link[1][0] = robot_name
-                            edge.link[1][1] = vertex_pair[edge.link[1][1]]
-                            edge.id = self.map.edge_id
-                            self.map.edge_id += 1
-                            self.map.edge.append(edge)
-                    else:
-                        edge.id = self.map.edge_id
-                        self.map.edge_id += 1
-                        self.map.edge.append(edge)
-                for vertex in Topomap.vertex:
-                    if vertex.id in self.vertex_dict[vertex.robot_name]:
+        for vertex in Topomap.vertex:
+            if vertex.robot_name not in self.map.center_dict.keys():#estimated /robot_j/map
+                self.map.center_dict[vertex.robot_name] = np.array([0.0, 0.0])
+            if vertex.robot_name not in self.vertex_dict.keys():
+                self.vertex_dict[vertex.robot_name] = list() # init vertex of other robot
+            elif (vertex.id in self.vertex_dict[vertex.robot_name]) or (vertex.robot_name==robot_name):
+                # already added vertex or vertex belong to this robot
+                pass
+            else:
+                for svertex in self.map.vertex:#match vertex
+                    if svertex.robot_name == vertex.robot_name:#created by same robot
                         pass
                     else:
-                        self.map.vertex.append(vertex)
-                        point = self.map.center_dict[vertex.robot_name]
-                        number = len(self.vertex_dict[vertex.robot_name])
-                        point[0] = (point[0]*number + vertex.pose[0]) / (number+1)
-                        point[1] = (point[1]*number + vertex.pose[1]) / (number+1)
-                        self.map.center_dict[vertex.robot_name] = point
-                        self.vertex_dict[vertex.robot_name].append(vertex.id)
+                        score = np.dot(vertex.descriptor.T, svertex.descriptor)
+                        if score > self.topomap_matched_score:
+                            print("matched:", svertex.robot_name, svertex.id, vertex.robot_name, vertex.id, score)
+                            #estimate relative position
+                            #请求一下图片
+                            self.image_data_sub  = rospy.Subscriber(vertex.robot_name+"/relative_pose_est_image", Image, self.receive_image_callback)
+                            req_string = self.self_robot_name[-1] +" "+vertex.robot_name[-1]+" "+str(vertex.id)
+                            while not self.image_ready:
+                                # 发布请求图片的消息
+                                self.image_req_publisher.publish(req_string)
+                                rospy.sleep(0.1)
+                            #unsubscrib image topic 
+                            self.image_data_sub.unregister()
+                            self.image_data_sub = None
+
+                            img1 = svertex.local_image
+                            img2 = self.relative_pose_image #from other robot
+
+                            #estimated pose
+                            pose = planar_motion_calcu_mulit(img1,img2,k1 = self.K_mat,k2 = self.K_mat,cam_pose = self.cam_trans)
+                            
+                            self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.id,vertex.id,pose])
+
+                            matched_vertex.append(vertex)
+                            vertex_pair[vertex.id] = svertex.id
+
+                            #add vertex
+                            tmp_link = [[svertex.robot_name, svertex.id], [vertex.robot_name, vertex.id]]
+                            now_edge = self.edge.append(Edge(id=self.map.edge_id, link=tmp_link))
+                            self.map.edge_id += 1
+                            self.map.edge.append(now_edge)
+                            break
+
+        for edge in Topomap.edge:
+            if edge.link[0][1] in self.vertex_dict[edge.link[0][0]]:
+                if edge.link[1][1] in self.vertex_dict[edge.link[1][0]] or edge.link[1][0]==self.self_robot_name:
+                    pass
+                else:
+                    edge.link[0][0] = self.self_robot_name
+                    edge.link[0][1] = vertex_pair[edge.link[0][1]]
+                    edge.id = self.map.edge_id
+                    self.map.edge_id += 1
+                    self.map.edge.append(edge)
+            elif edge.link[1][1] in self.vertex_dict[edge.link[1][0]]:
+                if edge.link[0][1] in self.vertex_dict[edge.link[0][0]] or edge.link[0][0]==self.self_robot_name:
+                    pass
+                else:
+                    edge.link[1][0] = self.self_robot_name
+                    edge.link[1][1] = vertex_pair[edge.link[1][1]]
+                    edge.id = self.map.edge_id
+                    self.map.edge_id += 1
+                    self.map.edge.append(edge)
+            else:
+                edge.id = self.map.edge_id
+                self.map.edge_id += 1
+                self.map.edge.append(edge)
+
+        #estimate the center of other robot
+        #TODO
+        self.topo_optimize()
+
+        for vertex in Topomap.vertex:
+            #add vertex
+            if vertex.id not in self.vertex_dict[vertex.robot_name] and vertex.robot_name != self.self_robot_name:
+                now_robot_map_frame_rot = self.map_frame_pose[vertex.robot_name][0]
+                now_robot_map_frame_trans = self.map_frame_pose[vertex.robot_name][1]
+                tmp_pose = now_robot_map_frame_rot @ np.array([vertex.pose[0],vertex.pose[1],0]) + now_robot_map_frame_trans
+                vertex.pose[0] = tmp_pose[0]
+                vertex.pose[1] = tmp_pose[1]
+                self.map.vertex.append(vertex)
+                self.vertex_dict[vertex.robot_name].append(vertex.id)
+        
+        self.ready_for_topo_map = True
+
+
 
     def unexplored_directions_callback(self, data, rn):
         #delete this direction
@@ -644,6 +705,11 @@ class RobotNode:
         self.trajectory_point = temp_position
         # print(robot_name, "length", self.trajectory_length)
 
+    def topo_optimize(self):
+        #TODO
+        #self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.id,vertex.id,pose])
+        # This part should update self.map_frame_pose[vertex.robot_name];self.map_frame_pose[vertex.robot_name][0] R33;[1]t 31
+        pass
 
 if __name__ == '__main__':
     time.sleep(3)

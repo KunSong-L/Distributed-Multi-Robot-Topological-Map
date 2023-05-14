@@ -4,12 +4,13 @@ import numpy as np
 import sys
 
 def TopomapToMessage(Topomap):
+    #这里还需要修改一下，仅传输没有传输过的数据
     topomap_message = TopoMapMsg()
     for i in range(len(Topomap.vertex)):
         vertexmsg = VertexMsg()
         vertexmsg.robot_name = Topomap.vertex[i].robot_name
         vertexmsg.id = Topomap.vertex[i].id
-        vertexmsg.pose = Topomap.vertex[i].pose
+        vertexmsg.pose = Topomap.vertex[i].pose #这里需要修改一下pose
         vertexmsg.descriptor = Topomap.vertex[i].descriptor.tolist()
         vertexmsg.navigableDirection = Topomap.vertex[i].navigableDirection
         for j in range(len(Topomap.vertex[i].frontierPoints)):

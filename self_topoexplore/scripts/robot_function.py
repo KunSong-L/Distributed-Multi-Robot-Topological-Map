@@ -104,3 +104,4 @@ def get_net_param(state):
     net_params['pretrained'] = False
 
     return net_params
+

@@ -208,7 +208,7 @@ def planar_motion_calcu_single(img1,img2,k1,k2,method=1):
 
 def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose):
     #cam pose:[[x,y,yaw],...]
-    show_img = 1
+    show_img = 0
     cam_num = len(cam_pose)
     height = img1.shape[0]
     widht = img1.shape[1]//4
@@ -292,47 +292,7 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose):
         plt.scatter(index[np.logical_not(best_inlier_index)],total_yaw[np.logical_not(best_inlier_index)],c = 'r',s=2)
         plt.title("yaw inlier and outlier")
         plt.show()
-
-    #return yaw and translation angle in degree
-    return yaw_result,t1,t2,rho_index
-
-if __name__=="__main__":
-    img1 = cv.imread("/home/master/debug/robot1.jpg")
-    img2 = cv.imread("/home/master/debug/robot2.jpg")
-    img1 = cv.cvtColor(img1,cv.COLOR_BGR2GRAY)
-    img2 = cv.cvtColor(img2,cv.COLOR_BGR2GRAY)
-    x_offset = 0.1
-    y_offset = 0.2
-    cam_trans = [[x_offset,0,0],[0,y_offset,math.pi/2],[-x_offset,0.0,math.pi],[0,-y_offset,-math.pi/2]]
-    cam_R = []
-    cam_t = []
-    for pose in cam_trans:
-        cam_R.append(R.from_euler('z',pose[2],degrees=False).as_matrix())
-        cam_t.append(np.array([[pose[0]],[pose[1]],[0]]))
-
-    # read K
-    K1_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
-    K2_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
-
-    cam_index = [1,2,1,1]
-    # cam_index = [1,2,2,2]
-    best_model,t1,t2,rho_index = planar_motion_calcu_mulit(img1,img2,K1_mat,K2_mat,cam_trans)
-    print(best_model[0][0])
-    plt.figure()
-    rho = np.arange(-2,2,0.1)
-    x_plot = np.ones(len(rho),float)
-    y_plot = np.ones(len(rho),float)
-    for j in range(0,len(t1)):
-        for i in range(len(rho)):
-            now_t1 = t1[j][0:2]
-            now_t2 = t2[j][0:2]
-            tmp = rho[i] * now_t1 + now_t2
-            x_plot[i] = tmp[0,0]
-            y_plot[i] = tmp[1,0]
-        plt.plot(x_plot,y_plot)
-    plt.xlim((-1,1))
-    plt.ylim((-2,2))
-
+    
     #direction solve
     interextion_line = np.array([],float).reshape((2,-1))
     for i in range(0,len(t1)):
@@ -364,31 +324,39 @@ if __name__=="__main__":
     
     # cluster
     dbscan = DBSCAN(eps=0.02, min_samples=20).fit(interextion_line.T)#聚类
-    point_lable = dbscan.labels_
-    lables = np.unique(dbscan.labels_)# 获取有几类
-    mode, count = stats.mode(dbscan.labels_)
-    if mode[0]==-1:
+    mode, count = stats.mode(dbscan.labels_,keepdims=True)
+    if mode[0]==-1:#-1 for outlier
         most_common_label = mode[1]
-        num_most_common = count[1]
     else:
         most_common_label = mode[0]
-        num_most_common = count[0]
-    print("most common label is:  ", most_common_label)
-    print("number of common label is:  ", num_most_common)
-    points_list = [np.array([],float).reshape((2,-1)) for i in range(len(lables))]#获取每一类具体有多少点
+    points_list = interextion_line[:,np.where(dbscan.labels_ == most_common_label)]
 
-    for i in range(interextion_line.shape[1]):
-        points_list[dbscan.labels_[i]] = np.append(points_list[dbscan.labels_[i]],interextion_line[:,i].reshape(2,-1),axis = 1) #把每个点加进对应类里面去
+    return [np.mean(points_list[0,:]), np.mean(points_list[1,:]),yaw_result[0][0] ]
+
+
+if __name__=="__main__":
+    img1 = cv.imread("/home/master/debug/robot1_self.jpg")
+    img2 = cv.imread("/home/master/debug/robot1_received.jpg")
+    img1 = cv.cvtColor(img1,cv.COLOR_BGR2GRAY)
+    img2 = cv.cvtColor(img2,cv.COLOR_BGR2GRAY)
+    x_offset = 0.1
+    y_offset = 0.2
+    cam_trans = [[x_offset,0,0],[0,y_offset,math.pi/2],[-x_offset,0.0,math.pi],[0,-y_offset,-math.pi/2]]
+    cam_R = []
+    cam_t = []
+    for pose in cam_trans:
+        cam_R.append(R.from_euler('z',pose[2],degrees=False).as_matrix())
+        cam_t.append(np.array([[pose[0]],[pose[1]],[0]]))
+
+    # read K
+    K1_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
+    K2_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
+
     
-    plt.figure()
-    plt.scatter(points_list[most_common_label][0,:],points_list[most_common_label][1,:],s=1)
-
-    plt.figure()
-    for i in range(len(lables)):
-        plt.scatter(points_list[i][0,:],points_list[i][1,:],s=1)
-    plt.show()
-    print("estimated translation is: x = ",np.mean(points_list[2][0,:]),"   y= ",np.mean(points_list[2][1,:]))
-
+    pose = planar_motion_calcu_mulit(img1,img2,K1_mat,K2_mat,cam_trans)
+    print(pose)
+    
+    
 
 
     
