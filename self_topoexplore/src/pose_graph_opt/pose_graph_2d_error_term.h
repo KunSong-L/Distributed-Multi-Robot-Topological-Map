@@ -69,6 +69,7 @@ class PoseGraph2dErrorTerm {
   bool operator()(const T* const x_a, const T* const y_a, const T* const yaw_a,
                   const T* const x_b, const T* const y_b, const T* const yaw_b,
                   T* residuals_ptr) const {
+    //在这一部分构建残差函数
     const Eigen::Matrix<T, 2, 1> p_a(*x_a, *y_a);
     const Eigen::Matrix<T, 2, 1> p_b(*x_b, *y_b);
 

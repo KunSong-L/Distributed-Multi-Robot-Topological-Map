@@ -88,6 +88,7 @@ void BuildOptimizationProblem(const std::vector<Constraint2d>& constraints,
     // Ceres will take ownership of the pointer.
     ceres::CostFunction* cost_function = PoseGraph2dErrorTerm::Create(
         constraint.x, constraint.y, constraint.yaw_radians, sqrt_information);
+
     problem->AddResidualBlock(
         cost_function, loss_function, &pose_begin_iter->second.x,
         &pose_begin_iter->second.y, &pose_begin_iter->second.yaw_radians,
@@ -120,13 +121,13 @@ bool SolveOptimizationProblem(ceres::Problem* problem) {
   CHECK(problem != NULL);
 
   ceres::Solver::Options options;
-  options.max_num_iterations = 100;
+  options.max_num_iterations = 1000;
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
 
   ceres::Solver::Summary summary;
   ceres::Solve(options, problem, &summary);
 
-  std::cout << summary.FullReport() << '\n';
+//   std::cout << summary.FullReport() << '\n';
 
   return summary.IsSolutionUsable();
 }
@@ -159,26 +160,34 @@ int main(int argc, char** argv) {
 
   CHECK(FLAGS_input != "") << "Need to specify the filename to read.";
 
-  std::map<int, ceres::examples::Pose2d> poses;
-  std::vector<ceres::examples::Constraint2d> constraints;
+  std::map<int, ceres::examples::Pose2d> poses; //pose map
+  std::vector<ceres::examples::Constraint2d> constraints;//constraints
 
   CHECK(ceres::examples::ReadG2oFile(FLAGS_input, &poses, &constraints))
       << "Error reading the file: " << FLAGS_input;
   //change read g2o file part
-  std::cout << "Number of poses: " << poses.size() << '\n';
-  std::cout << "Number of constraints: " << constraints.size() << '\n';
+//   std::cout << "Number of poses: " << poses.size() << '\n';
+//   std::cout << "Number of constraints: " << constraints.size() << '\n';
 
-  CHECK(ceres::examples::OutputPoses("poses_original.txt", poses))
+  
+CHECK(ceres::examples::OutputPoses("poses_original.txt", poses))
       << "Error outputting to poses_original.txt";
-
   ceres::Problem problem;
   ceres::examples::BuildOptimizationProblem(constraints, &poses, &problem);
 
   CHECK(ceres::examples::SolveOptimizationProblem(&problem))
       << "The solve was not successful, exiting.";
-
+      
+  
   CHECK(ceres::examples::OutputPoses("poses_optimized.txt", poses))
       << "Error outputting to poses_original.txt";
 
+
+  for (std::map<int, ceres::examples::Pose2d>::const_iterator poses_iter = poses.begin();
+       poses_iter != poses.end(); ++poses_iter) {
+    const std::map<int, ceres::examples::Pose2d>::value_type& pair = *poses_iter;
+    std::cout <<  pair.first << " " << pair.second.x << " " << pair.second.y
+            << ' ' << pair.second.yaw_radians << '\n';
+  }
   return 0;
 }
