@@ -12,20 +12,12 @@ find_package( Ceres REQUIRED )
 include_directories( ${CERES_INCLUDE_DIRS} )
 
 
-add_executable(pose_graph_2d
-  angle_local_parameterization.h
-  normalize_angle.h
-  pose_opt.cpp
-  pose_graph_2d_error_term.h
-  types.h)
-  target_link_libraries(pose_graph_2d ${CERES_LIBRARIES} gflags)
-
-add_executable(test main.cpp
+add_executable(pose_graph_2d main.cpp
 angle_local_parameterization.h
   normalize_angle.h
   pose_graph_2d_error_term.h
   types.h)
-target_link_libraries(test ${CERES_LIBRARIES} gflags)
+target_link_libraries(pose_graph_2d ${CERES_LIBRARIES} gflags)
 
 
 SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/..)

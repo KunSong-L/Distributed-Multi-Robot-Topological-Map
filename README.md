@@ -1,4 +1,7 @@
 # MR-Topomap代码
+## Dependency
+install ceres python wrapper
+https://github.com/Edwinem/ceres_python_bindings
 
 ## Run TopoExplore
 ```

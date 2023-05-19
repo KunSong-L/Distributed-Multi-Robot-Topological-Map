@@ -212,11 +212,6 @@ int main(int argc, char **argv)
     CHECK(ceres::examples::SolveOptimizationProblem(&problem))
         << "The solve was not successful, exiting.";
 
-    CHECK(ceres::examples::OutputPoses("poses_original.txt", poses))
-        << "Error outputting to poses_original.txt";
-    CHECK(ceres::examples::OutputPoses("poses_optimized.txt", poses))
-        << "Error outputting to poses_original.txt";
-
     for (std::map<int, ceres::examples::Pose2d>::const_iterator poses_iter = poses.begin();
          poses_iter != poses.end(); ++poses_iter)
     {
