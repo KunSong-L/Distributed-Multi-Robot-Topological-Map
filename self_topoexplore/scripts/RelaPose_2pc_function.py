@@ -331,12 +331,12 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose):
         most_common_label = mode[0]
     points_list = interextion_line[:,np.where(dbscan.labels_ == most_common_label)]
 
-    return [np.mean(points_list[0,:]), np.mean(points_list[1,:]),yaw_result[0][0] ]
+    return [np.mean(points_list[0,:]), np.mean(points_list[1,:]),-yaw_result[0][0] ]
 
 
 if __name__=="__main__":
-    img1 = cv.imread("/home/master/debug/robot1_self.jpg")
-    img2 = cv.imread("/home/master/debug/robot1_received.jpg")
+    img1 = cv.imread("/home/master/debug/robot2_self.jpg")
+    img2 = cv.imread("/home/master/debug/robot2_received.jpg")
     img1 = cv.cvtColor(img1,cv.COLOR_BGR2GRAY)
     img2 = cv.cvtColor(img2,cv.COLOR_BGR2GRAY)
     x_offset = 0.1

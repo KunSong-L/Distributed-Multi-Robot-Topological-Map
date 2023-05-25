@@ -39,9 +39,11 @@ import math
 import time
 import copy
 from std_msgs.msg import Header
-
+import sys
 from robot_function import *
 from RelaPose_2pc_function import *
+
+import subprocess
 
 debug_path = "/home/master/debug/"
 
@@ -99,6 +101,8 @@ class RobotNode:
         self.last_nextmove = 0 #angle
         self.topomap_meet = 0
         self.vertex_dict = dict()
+        self.vertex_dict[self.self_robot_name] = list()
+
         self.edge_dict = dict()
         self.relative_position = dict()
         self.relative_orientation = dict()
@@ -158,7 +162,7 @@ class RobotNode:
             robot_name+"/ud", UnexploredDirectionsMsg, queue_size=1)
         self.start_pub = rospy.Publisher(
             "/start_exp", String, queue_size=1) #发一个start
-        self.frontier_publisher = rospy.Publisher(robot_name+'/frontier_points', Marker, queue_size=10)
+        self.frontier_publisher = rospy.Publisher(robot_name+'/frontier_points', Marker, queue_size=1)
             
 
         rospy.Subscriber(
@@ -170,7 +174,7 @@ class RobotNode:
 
         for robot in robot_list:
             rospy.Subscriber(
-                robot+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1)
+                robot+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1, buff_size=52428800)
             rospy.Subscriber(
                 robot+"/ud", UnexploredDirectionsMsg, self.unexplored_directions_callback, robot, queue_size=1)
         
@@ -257,6 +261,8 @@ class RobotNode:
             while self.grid_map_ready==0 or self.tf_transform_ready==0:
                 time.sleep(0.5)
             # 1. set and publish the topological map visulization markers
+            self.vertex_dict[self.self_robot_name].append(vertex.id)
+
             localMap = self.grid_map
             self.map.vertex[-1].localMap = localMap #every vertex contains local map
             self.detect_loop = 0
@@ -376,7 +382,7 @@ class RobotNode:
                 self.last_nextmove = move_direction
                 goal_message, self.goal = self.get_move_goal(robot_name, current_pose, move_direction, basic_length+offset)#offset = 0
                 goal_marker = self.get_goal_marker(robot_name, current_pose, move_direction, basic_length+offset)
-                # self.actoinclient.send_goal(goal_message)
+                self.actoinclient.send_goal(goal_message)
                 self.goal_pub.publish(goal_marker)
 
         #deal with no place to go
@@ -597,13 +603,14 @@ class RobotNode:
         vertex_pair = dict()
         for vertex in Topomap.vertex:
             if vertex.robot_name not in self.map.center_dict.keys():#estimated /robot_j/map
-                self.map.center_dict[vertex.robot_name] = np.array([0.0, 0.0])
+                self.map.center_dict[vertex.robot_name] = np.array([0.0, 0.0])#需要删掉这一部分
             if vertex.robot_name not in self.vertex_dict.keys():
                 self.vertex_dict[vertex.robot_name] = list() # init vertex of other robot
-            elif (vertex.id in self.vertex_dict[vertex.robot_name]) or (vertex.robot_name==robot_name):
+            elif (vertex.id in self.vertex_dict[vertex.robot_name]) or (vertex.robot_name==self.self_robot_name):
                 # already added vertex or vertex belong to this robot
                 pass
             else:
+                # start match
                 for svertex in self.map.vertex:#match vertex
                     if svertex.robot_name == vertex.robot_name:#created by same robot
                         pass
@@ -611,12 +618,14 @@ class RobotNode:
                         score = np.dot(vertex.descriptor.T, svertex.descriptor)
                         if score > self.topomap_matched_score:
                             print("matched:", svertex.robot_name, svertex.id, vertex.robot_name, vertex.id, score)
+                            self.meeted_robot.append(vertex.robot_name)
                             #estimate relative position
                             #请求一下图片
                             self.image_data_sub  = rospy.Subscriber(vertex.robot_name+"/relative_pose_est_image", Image, self.receive_image_callback)
                             req_string = self.self_robot_name[-1] +" "+vertex.robot_name[-1]+" "+str(vertex.id)
                             while not self.image_ready:
                                 # 发布请求图片的消息
+                                print("image not ready")
                                 self.image_req_publisher.publish(req_string)
                                 rospy.sleep(0.1)
                             #unsubscrib image topic 
@@ -628,26 +637,24 @@ class RobotNode:
 
                             #estimated pose
                             pose = planar_motion_calcu_mulit(img1,img2,k1 = self.K_mat,k2 = self.K_mat,cam_pose = self.cam_trans)
+                            print(self.self_robot_name,"estimated pose ", pose)
+                            self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.pose,list(vertex.pose),pose])
                             
-                            self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.id,vertex.id,pose])
-
                             matched_vertex.append(vertex)
-                            vertex_pair[vertex.id] = svertex.id
 
-                            #add vertex
+                            #add edge between meeted two robot
                             tmp_link = [[svertex.robot_name, svertex.id], [vertex.robot_name, vertex.id]]
-                            now_edge = self.edge.append(Edge(id=self.map.edge_id, link=tmp_link))
+                            self.map.edge.append(Edge(id=self.map.edge_id, link=tmp_link))
                             self.map.edge_id += 1
-                            self.map.edge.append(now_edge)
+                            #estimate the center of other robot
+                            self.topo_optimize()
                             break
-
+        
         for edge in Topomap.edge:
             if edge.link[0][1] in self.vertex_dict[edge.link[0][0]]:
                 if edge.link[1][1] in self.vertex_dict[edge.link[1][0]] or edge.link[1][0]==self.self_robot_name:
                     pass
                 else:
-                    edge.link[0][0] = self.self_robot_name
-                    edge.link[0][1] = vertex_pair[edge.link[0][1]]
                     edge.id = self.map.edge_id
                     self.map.edge_id += 1
                     self.map.edge.append(edge)
@@ -655,8 +662,6 @@ class RobotNode:
                 if edge.link[0][1] in self.vertex_dict[edge.link[0][0]] or edge.link[0][0]==self.self_robot_name:
                     pass
                 else:
-                    edge.link[1][0] = self.self_robot_name
-                    edge.link[1][1] = vertex_pair[edge.link[1][1]]
                     edge.id = self.map.edge_id
                     self.map.edge_id += 1
                     self.map.edge.append(edge)
@@ -664,23 +669,20 @@ class RobotNode:
                 edge.id = self.map.edge_id
                 self.map.edge_id += 1
                 self.map.edge.append(edge)
-
-        #estimate the center of other robot
-        #TODO
-        self.topo_optimize()
-
         for vertex in Topomap.vertex:
             #add vertex
             if vertex.id not in self.vertex_dict[vertex.robot_name] and vertex.robot_name != self.self_robot_name:
                 now_robot_map_frame_rot = self.map_frame_pose[vertex.robot_name][0]
                 now_robot_map_frame_trans = self.map_frame_pose[vertex.robot_name][1]
                 tmp_pose = now_robot_map_frame_rot @ np.array([vertex.pose[0],vertex.pose[1],0]) + now_robot_map_frame_trans
+                vertex.pose = list(vertex.pose)
                 vertex.pose[0] = tmp_pose[0]
                 vertex.pose[1] = tmp_pose[1]
                 self.map.vertex.append(vertex)
                 self.vertex_dict[vertex.robot_name].append(vertex.id)
         
         self.ready_for_topo_map = True
+        
 
 
 
@@ -706,10 +708,61 @@ class RobotNode:
         # print(robot_name, "length", self.trajectory_length)
 
     def topo_optimize(self):
-        #TODO
         #self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.id,vertex.id,pose])
         # This part should update self.map_frame_pose[vertex.robot_name];self.map_frame_pose[vertex.robot_name][0] R33;[1]t 31
-        pass
+        print("------------------------------begin topo opt--------------------------------")
+        input = self.estimated_vertex_pose
+        now_meeted_robot_num = len(self.meeted_robot)
+        name_list = [self.self_robot_name] + self.meeted_robot
+        c_real = [[0,0,0] for i in range(now_meeted_robot_num + 1)]
+
+        trust1 = 1
+        trust2 = 100
+
+        now_id = 1
+        trans_data = ""
+        for center in c_real:
+            trans_data+="VERTEX_SE2 {} {:.6f} {:.6f} {:.6f}\n".format(now_id,center[0],center[1],center[2])
+            now_id +=1
+
+        for now_input in input:
+            trans_data+="VERTEX_SE2 {} {:.6f} {:.6f} {:.6f}\n".format(now_id,now_input[2][0],now_input[2][1],now_input[2][2])
+            trans_data+="VERTEX_SE2 {} {:.6f} {:.6f} {:.6f}\n".format(now_id+1,now_input[3][0],now_input[3][1],now_input[3][2])
+            start_idx = str(name_list.index(now_input[0])+1)
+            end_idx = str(name_list.index(now_input[1])+1)
+            trans_data+="EDGE_SE2 {} {} {:.6f} {:.6f} {:.6f} {:.6f} 0 0 {:.6f} 0 {:.6f}\n".format(start_idx, now_id,now_input[2][0],now_input[2][1],now_input[2][2]/180*math.pi,trust2,trust2,trust2)
+            trans_data+="EDGE_SE2 {} {} {:.6f} {:.6f} {:.6f} {:.6f} 0 0 {:.6f} 0 {:.6f}\n".format(end_idx, now_id+1,now_input[3][0],now_input[3][1],now_input[3][2]/180*math.pi,trust2,trust2,trust2)
+            trans_data+="EDGE_SE2 {} {} {:.6f} {:.6f} {:.6f} {:.6f} 0 0 {:.6f} 0 {:.6f}\n".format(start_idx,end_idx,now_input[4][0],now_input[4][1],now_input[4][2]/180*math.pi,trust1,trust1,trust1)
+            now_id += 2
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # 构建可执行文件的相对路径
+        executable_path = os.path.join(current_dir, '..', 'src', 'pose_graph_opt', 'pose_graph_2d')
+        process = subprocess.Popen(executable_path, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        # 向C++程序输入数据
+        process.stdin.write(trans_data)
+        # 关闭输入流
+        process.stdin.close()
+        output_data = process.stdout.read()
+        # 等待C++程序退出
+        process.wait()
+
+        output_data = output_data[:-1]
+
+        rows = output_data.split('\n')
+        # 将每行分割成字符串数组
+        data_list = [row.split() for row in rows]
+        # 将字符串数组转换为浮点数数组
+        data_arr = np.array(data_list, dtype=float)
+        poses_optimized = data_arr[:,1:]
+        poses_optimized[:,-1] = poses_optimized[:,-1] / math.pi *180#转换到角度制度
+        for i in range(0,now_meeted_robot_num):
+            now_meeted_robot_pose = poses_optimized[1+i,:]
+            print(self.self_robot_name,"estimated robot pose robot = ", self.meeted_robot[i],now_meeted_robot_pose)
+            self.map_frame_pose[self.meeted_robot[i]] = list()
+            self.map_frame_pose[self.meeted_robot[i]].append(R.from_euler('z', now_meeted_robot_pose[2], degrees=True).as_matrix()) 
+            self.map_frame_pose[self.meeted_robot[i]].append(np.array([now_meeted_robot_pose[0],now_meeted_robot_pose[1],0]))
+
+
 
 if __name__ == '__main__':
     time.sleep(3)
