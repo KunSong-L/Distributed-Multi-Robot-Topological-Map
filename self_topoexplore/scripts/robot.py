@@ -589,7 +589,6 @@ class RobotNode:
         
         if len(self.vertex_on_path) >= 3:
             self.no_place_to_go = 1
-            print(robot_name, "no place to go")
             self.vertex_on_path = []
             self.reference_vertex = self.current_node
 
@@ -617,7 +616,7 @@ class RobotNode:
                     else:
                         score = np.dot(vertex.descriptor.T, svertex.descriptor)
                         if score > self.topomap_matched_score:
-                            print("matched:", svertex.robot_name, svertex.id, vertex.robot_name, vertex.id, score)
+                            print("matched: now robot = ", svertex.robot_name, svertex.id,"; target robot = ", vertex.robot_name, vertex.id, score)
                             self.meeted_robot.append(vertex.robot_name)
                             #estimate relative position
                             #请求一下图片
@@ -625,7 +624,6 @@ class RobotNode:
                             req_string = self.self_robot_name[-1] +" "+vertex.robot_name[-1]+" "+str(vertex.id)
                             while not self.image_ready:
                                 # 发布请求图片的消息
-                                print("image not ready")
                                 self.image_req_publisher.publish(req_string)
                                 rospy.sleep(0.1)
                             #unsubscrib image topic 
@@ -637,7 +635,6 @@ class RobotNode:
 
                             #estimated pose
                             pose = planar_motion_calcu_mulit(img1,img2,k1 = self.K_mat,k2 = self.K_mat,cam_pose = self.cam_trans)
-                            print(self.self_robot_name,"estimated pose ", pose)
                             self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.pose,list(vertex.pose),pose])
                             
                             matched_vertex.append(vertex)
@@ -710,7 +707,6 @@ class RobotNode:
     def topo_optimize(self):
         #self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.id,vertex.id,pose])
         # This part should update self.map_frame_pose[vertex.robot_name];self.map_frame_pose[vertex.robot_name][0] R33;[1]t 31
-        print("------------------------------begin topo opt--------------------------------")
         input = self.estimated_vertex_pose
         now_meeted_robot_num = len(self.meeted_robot)
         name_list = [self.self_robot_name] + self.meeted_robot
@@ -757,6 +753,7 @@ class RobotNode:
         poses_optimized[:,-1] = poses_optimized[:,-1] / math.pi *180#转换到角度制度
         for i in range(0,now_meeted_robot_num):
             now_meeted_robot_pose = poses_optimized[1+i,:]
+            print("---------------Robot Center Optimized-----------------------\n\n")
             print(self.self_robot_name,"estimated robot pose robot = ", self.meeted_robot[i],now_meeted_robot_pose)
             self.map_frame_pose[self.meeted_robot[i]] = list()
             self.map_frame_pose[self.meeted_robot[i]].append(R.from_euler('z', now_meeted_robot_pose[2], degrees=True).as_matrix()) 
