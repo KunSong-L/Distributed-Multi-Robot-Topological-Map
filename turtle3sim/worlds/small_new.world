@@ -11,6 +11,10 @@
       </clouds>
       </sky>
     </scene>
+    
+    <include>
+      <uri>model://ISCAS_groundplane</uri>
+    </include>
 
     <physics type='ode'>
       <max_step_size>0.001</max_step_size>

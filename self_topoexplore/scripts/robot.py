@@ -102,6 +102,7 @@ class RobotNode:
         self.topomap_meet = 0
         self.vertex_dict = dict()
         self.vertex_dict[self.self_robot_name] = list()
+        self.matched_vertex_dict = dict()
 
         self.edge_dict = dict()
         self.relative_position = dict()
@@ -109,6 +110,7 @@ class RobotNode:
         self.meeted_robot = list()
         for item in robot_list:
             self.vertex_dict[item] = list()
+            self.matched_vertex_dict[item] = list()
             self.edge_dict[item] = list()
             self.relative_position[item] = [0, 0, 0]
             self.relative_orientation[item] = 0
@@ -344,17 +346,13 @@ class RobotNode:
                 self.no_place_to_go = 1
             else:
                 # choose where to go
+                # 选择前沿点
                 for i in range(len(self.map.vertex[picked_vertex_id].frontierPoints)):
                     position_tmp = self.map.vertex[picked_vertex_id].frontierPoints[i]
                     now_vertex_pose = np.array(self.map.vertex[picked_vertex_id].pose[0:2])
                     # map.center : center of vertex
                     dis_tmp = np.sqrt(np.sum(np.square(position_tmp + now_vertex_pose - self.map.center)))#the point farthest from the center of the map
                     dis_scores[i] += epos * dis_tmp
-                    #TODO
-                    #需要修改这一部分
-                    for j in range(len(self.meeted_robot)):# remain considering, deal with multi robot part
-                        dis_with_other_centers[j] = np.sqrt(np.sum(np.square(position_tmp-self.map.center_dict[self.meeted_robot[j]])))
-                        dis_scores[i] += dis_with_other_centers[j] * (1-epos)
 
                 #choose max dis as next move
                 for i in range(len(dis_scores)):
@@ -596,16 +594,12 @@ class RobotNode:
         # receive topomap from other robots
         if not self.ready_for_topo_map:
             return
+        update_robot_center = False
         self.ready_for_topo_map = False
         Topomap = MessageToTopomap(topomap_message)
         matched_vertex = list()
-        vertex_pair = dict()
         for vertex in Topomap.vertex:
-            if vertex.robot_name not in self.map.center_dict.keys():#estimated /robot_j/map
-                self.map.center_dict[vertex.robot_name] = np.array([0.0, 0.0])#需要删掉这一部分
-            if vertex.robot_name not in self.vertex_dict.keys():
-                self.vertex_dict[vertex.robot_name] = list() # init vertex of other robot
-            elif (vertex.id in self.vertex_dict[vertex.robot_name]) or (vertex.robot_name==self.self_robot_name):
+            if vertex.robot_name==self.self_robot_name or vertex.id in self.matched_vertex_dict[vertex.robot_name]:
                 # already added vertex or vertex belong to this robot
                 pass
             else:
@@ -618,6 +612,7 @@ class RobotNode:
                         if score > self.topomap_matched_score:
                             print("matched: now robot = ", svertex.robot_name, svertex.id,"; target robot = ", vertex.robot_name, vertex.id, score)
                             self.meeted_robot.append(vertex.robot_name)
+                            self.matched_vertex_dict[vertex.robot_name].append(vertex.id)
                             #estimate relative position
                             #请求一下图片
                             self.image_data_sub  = rospy.Subscriber(vertex.robot_name+"/relative_pose_est_image", Image, self.receive_image_callback)
@@ -632,7 +627,8 @@ class RobotNode:
 
                             img1 = svertex.local_image
                             img2 = self.relative_pose_image #from other robot
-
+                            cv2.imwrite(debug_path+self.self_robot_name + "_self.jpg", img1)
+                            cv2.imwrite(debug_path+self.self_robot_name + "_received.jpg", img2)
                             #estimated pose
                             pose = planar_motion_calcu_mulit(img1,img2,k1 = self.K_mat,k2 = self.K_mat,cam_pose = self.cam_trans)
                             self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.pose,list(vertex.pose),pose])
@@ -643,40 +639,42 @@ class RobotNode:
                             tmp_link = [[svertex.robot_name, svertex.id], [vertex.robot_name, vertex.id]]
                             self.map.edge.append(Edge(id=self.map.edge_id, link=tmp_link))
                             self.map.edge_id += 1
-                            #estimate the center of other robot
-                            self.topo_optimize()
+                            #estimate the center of other robot     
+                            update_robot_center = True
                             break
         
-        for edge in Topomap.edge:
-            if edge.link[0][1] in self.vertex_dict[edge.link[0][0]]:
-                if edge.link[1][1] in self.vertex_dict[edge.link[1][0]] or edge.link[1][0]==self.self_robot_name:
-                    pass
+        if update_robot_center:
+            self.topo_optimize()
+            for edge in Topomap.edge:
+                if edge.link[0][1] in self.vertex_dict[edge.link[0][0]]:
+                    if edge.link[1][1] in self.vertex_dict[edge.link[1][0]] or edge.link[1][0]==self.self_robot_name:
+                        pass
+                    else:
+                        edge.id = self.map.edge_id
+                        self.map.edge_id += 1
+                        self.map.edge.append(edge)
+                elif edge.link[1][1] in self.vertex_dict[edge.link[1][0]]:
+                    if edge.link[0][1] in self.vertex_dict[edge.link[0][0]] or edge.link[0][0]==self.self_robot_name:
+                        pass
+                    else:
+                        edge.id = self.map.edge_id
+                        self.map.edge_id += 1
+                        self.map.edge.append(edge)
                 else:
                     edge.id = self.map.edge_id
                     self.map.edge_id += 1
                     self.map.edge.append(edge)
-            elif edge.link[1][1] in self.vertex_dict[edge.link[1][0]]:
-                if edge.link[0][1] in self.vertex_dict[edge.link[0][0]] or edge.link[0][0]==self.self_robot_name:
-                    pass
-                else:
-                    edge.id = self.map.edge_id
-                    self.map.edge_id += 1
-                    self.map.edge.append(edge)
-            else:
-                edge.id = self.map.edge_id
-                self.map.edge_id += 1
-                self.map.edge.append(edge)
-        for vertex in Topomap.vertex:
-            #add vertex
-            if vertex.id not in self.vertex_dict[vertex.robot_name] and vertex.robot_name != self.self_robot_name:
-                now_robot_map_frame_rot = self.map_frame_pose[vertex.robot_name][0]
-                now_robot_map_frame_trans = self.map_frame_pose[vertex.robot_name][1]
-                tmp_pose = now_robot_map_frame_rot @ np.array([vertex.pose[0],vertex.pose[1],0]) + now_robot_map_frame_trans
-                vertex.pose = list(vertex.pose)
-                vertex.pose[0] = tmp_pose[0]
-                vertex.pose[1] = tmp_pose[1]
-                self.map.vertex.append(vertex)
-                self.vertex_dict[vertex.robot_name].append(vertex.id)
+            for vertex in Topomap.vertex:
+                #add vertex
+                if vertex.id not in self.vertex_dict[vertex.robot_name] and vertex.robot_name != self.self_robot_name:
+                    now_robot_map_frame_rot = self.map_frame_pose[vertex.robot_name][0]
+                    now_robot_map_frame_trans = self.map_frame_pose[vertex.robot_name][1]
+                    tmp_pose = now_robot_map_frame_rot @ np.array([vertex.pose[0],vertex.pose[1],0]) + now_robot_map_frame_trans
+                    vertex.pose = list(vertex.pose)
+                    vertex.pose[0] = tmp_pose[0]
+                    vertex.pose[1] = tmp_pose[1]
+                    self.map.vertex.append(vertex)
+                    self.vertex_dict[vertex.robot_name].append(vertex.id)
         
         self.ready_for_topo_map = True
         
@@ -708,6 +706,7 @@ class RobotNode:
         #self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.id,vertex.id,pose])
         # This part should update self.map_frame_pose[vertex.robot_name];self.map_frame_pose[vertex.robot_name][0] R33;[1]t 31
         input = self.estimated_vertex_pose
+        print(input)
         now_meeted_robot_num = len(self.meeted_robot)
         name_list = [self.self_robot_name] + self.meeted_robot
         c_real = [[0,0,0] for i in range(now_meeted_robot_num + 1)]

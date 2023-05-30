@@ -51,7 +51,7 @@ DEFINE_string(input, "", "The pose graph definition filename in g2o format.");
 
 namespace ceres
 {
-    namespace examples
+    namespace pose_2d
     {
         namespace
         {
@@ -128,7 +128,7 @@ namespace ceres
                 CHECK(problem != NULL);
 
                 ceres::Solver::Options options;
-                options.max_num_iterations = 1000;
+                options.max_num_iterations = 100000;
                 options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
 
                 ceres::Solver::Summary summary;
@@ -161,13 +161,13 @@ namespace ceres
             }
 
         } // namespace
-    }     // namespace examples
+    }     // namespace pose_2d
 } // namespace ceres
 
 int main(int argc, char **argv)
 {
-    std::map<int, ceres::examples::Pose2d> poses;           // pose map
-    std::vector<ceres::examples::Constraint2d> constraints; // constraints
+    std::map<int, ceres::pose_2d::Pose2d> poses;           // pose map
+    std::vector<ceres::pose_2d::Constraint2d> constraints; // constraints
 
     poses.clear();
     constraints.clear();
@@ -180,7 +180,7 @@ int main(int argc, char **argv)
         if (data_type == "VERTEX_SE2")
         {
             int id;
-            ceres::examples::Pose2d pose;
+            ceres::pose_2d::Pose2d pose;
             std::cin >> id >> pose;
             // Ensure we don't have duplicate poses.
             if (poses.find(id) != poses.end())
@@ -192,7 +192,7 @@ int main(int argc, char **argv)
         }
         else if (data_type == "EDGE_SE2")
         {
-            ceres::examples::Constraint2d constraint;
+            ceres::pose_2d::Constraint2d constraint;
             std::cin >> constraint;
             constraints.push_back(constraint);
         }
@@ -207,15 +207,15 @@ int main(int argc, char **argv)
     }
 
     ceres::Problem problem;
-    ceres::examples::BuildOptimizationProblem(constraints, &poses, &problem);
+    ceres::pose_2d::BuildOptimizationProblem(constraints, &poses, &problem);
 
-    CHECK(ceres::examples::SolveOptimizationProblem(&problem))
+    CHECK(ceres::pose_2d::SolveOptimizationProblem(&problem))
         << "The solve was not successful, exiting.";
 
-    for (std::map<int, ceres::examples::Pose2d>::const_iterator poses_iter = poses.begin();
+    for (std::map<int, ceres::pose_2d::Pose2d>::const_iterator poses_iter = poses.begin();
          poses_iter != poses.end(); ++poses_iter)
     {
-        const std::map<int, ceres::examples::Pose2d>::value_type &pair = *poses_iter;
+        const std::map<int, ceres::pose_2d::Pose2d>::value_type &pair = *poses_iter;
         std::cout << pair.first << " " << pair.second.x << " " << pair.second.y
                   << ' ' << pair.second.yaw_radians << '\n';
     }

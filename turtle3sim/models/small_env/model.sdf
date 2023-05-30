@@ -112,7 +112,7 @@
           <script>
             <uri>model://small_env/materials/scripts</uri>
             <uri>model://small_env/materials/textures</uri>
-            <name>wall4/Image </name>
+            <name>wall9/Image </name>
           </script>
           <ambient>1 1 1 1</ambient>
         </material>

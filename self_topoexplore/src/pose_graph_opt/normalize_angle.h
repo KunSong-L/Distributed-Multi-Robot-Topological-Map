@@ -36,7 +36,7 @@
 #include "ceres/ceres.h"
 
 namespace ceres {
-namespace examples {
+namespace pose_2d {
 
 // Normalizes the angle in radians between [-pi and pi).
 template <typename T>
@@ -47,7 +47,7 @@ inline T NormalizeAngle(const T& angle_radians) {
       two_pi * ceres::floor((angle_radians + T(M_PI)) / two_pi);
 }
 
-}  // namespace examples
+}  // namespace pose_2d
 }  // namespace ceres
 
 #endif  // CERES_EXAMPLES_POSE_GRAPH_2D_NORMALIZE_ANGLE_H_

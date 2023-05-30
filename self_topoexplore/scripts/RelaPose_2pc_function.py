@@ -10,6 +10,7 @@ from scipy.spatial.transform import Rotation as R
 import math
 from sklearn.cluster import DBSCAN
 from scipy import stats
+from collections import Counter
 
 def ransac(data, fit_model, distance_func, sample_size, max_distance, guess_inliers):
     #fit_model(data): input:data;  output:model
@@ -206,9 +207,8 @@ def planar_motion_calcu_single(img1,img2,k1,k2,method=1):
     return total_yaw, total_angleT
 
 
-def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose):
+def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose,show_img=0):
     #cam pose:[[x,y,yaw],...]
-    show_img = 0
     cam_num = len(cam_pose)
     height = img1.shape[0]
     widht = img1.shape[1]//4
@@ -321,22 +321,28 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose):
                 interextion_line = np.append(interextion_line,res,axis = 1)
             except:
                 continue
-    
+    if show_img:
+        plt.figure()
+        plt.scatter(interextion_line[0,:],interextion_line[1,:],c = 'r',s=2)
+        plt.title("Line Intersection")
+        plt.show()
+
     # cluster
-    dbscan = DBSCAN(eps=0.02, min_samples=20).fit(interextion_line.T)#聚类
-    mode, count = stats.mode(dbscan.labels_,keepdims=True)
-    if mode[0]==-1:#-1 for outlier
-        most_common_label = mode[1]
+    dbscan = DBSCAN(eps=0.05, min_samples=5).fit(interextion_line.T)#聚类
+    counter = Counter(dbscan.labels_)
+    most_common = counter.most_common(2)
+    if most_common[0][0]==-1:#-1 for outlier
+        most_common_label = most_common[1][0]
     else:
-        most_common_label = mode[0]
+        most_common_label = most_common[0][0]
     points_list = interextion_line[:,np.where(dbscan.labels_ == most_common_label)]
 
     return [np.mean(points_list[0,:]), np.mean(points_list[1,:]),-yaw_result[0][0] ]
 
 
 if __name__=="__main__":
-    img1 = cv.imread("/home/master/debug/robot2_self.jpg")
-    img2 = cv.imread("/home/master/debug/robot2_received.jpg")
+    img1 = cv.imread("/home/master/debug/robot1_self.jpg")
+    img2 = cv.imread("/home/master/debug/robot1_received.jpg")
     img1 = cv.cvtColor(img1,cv.COLOR_BGR2GRAY)
     img2 = cv.cvtColor(img2,cv.COLOR_BGR2GRAY)
     x_offset = 0.1
@@ -353,7 +359,7 @@ if __name__=="__main__":
     K2_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
 
     
-    pose = planar_motion_calcu_mulit(img1,img2,K1_mat,K2_mat,cam_trans)
+    pose = planar_motion_calcu_mulit(img1,img2,K1_mat,K2_mat,cam_trans,show_img = 1)
     print(pose)
     
     

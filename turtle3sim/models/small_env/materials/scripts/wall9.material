@@ -1,5 +1,4 @@
-material wall4
-/Image
+material wall9/Image
 {
   technique
   {
@@ -12,7 +11,7 @@ material wall4
 
       texture_unit
       {
-        texture richu.jpg
+        texture airport_inside_0004.jpg
 	      filtering trilinear
 	      scale 2 2
       }

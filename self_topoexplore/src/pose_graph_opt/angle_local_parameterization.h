@@ -35,7 +35,7 @@
 #include "normalize_angle.h"
 
 namespace ceres {
-namespace examples {
+namespace pose_2d {
 
 // Defines a local parameterization for updating the angle to be constrained in
 // [-pi to pi).
@@ -57,7 +57,7 @@ class AngleLocalParameterization {
   }
 };
 
-}  // namespace examples
+}  // namespace pose_2d
 }  // namespace ceres
 
 #endif  // CERES_EXAMPLES_POSE_GRAPH_2D_ANGLE_LOCAL_PARAMETERIZATION_H_

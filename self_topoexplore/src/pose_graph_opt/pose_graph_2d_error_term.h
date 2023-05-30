@@ -36,7 +36,7 @@
 #include "Eigen/Core"
 
 namespace ceres {
-namespace examples {
+namespace pose_2d {
 
 template <typename T>
 Eigen::Matrix<T, 2, 2> RotationMatrix2D(T yaw_radians) {
@@ -78,7 +78,7 @@ class PoseGraph2dErrorTerm {
     residuals_map.template head<2>() =
         RotationMatrix2D(*yaw_a).transpose() * (p_b - p_a) -
         p_ab_.cast<T>();
-    residuals_map(2) = ceres::examples::NormalizeAngle(
+    residuals_map(2) = ceres::pose_2d::NormalizeAngle(
         (*yaw_b - *yaw_a) - static_cast<T>(yaw_ab_radians_));
 
     // Scale the residuals by the square root information matrix to account for
@@ -107,7 +107,7 @@ class PoseGraph2dErrorTerm {
   const Eigen::Matrix3d sqrt_information_;
 };
 
-}  // namespace examples
+}  // namespace pose_2d
 }  // namespace ceres
 
 #endif  // CERES_EXAMPLES_POSE_GRAPH_2D_POSE_GRAPH_2D_ERROR_TERM_H_
