@@ -19,5 +19,4 @@ angle_local_parameterization.h
   types.h)
 target_link_libraries(pose_graph_2d ${CERES_LIBRARIES} gflags)
 
-
 SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/..)

@@ -28,7 +28,7 @@
     </include>
 
     <include>
-      <uri>model://small_env</uri>
+      <uri>model://tri_env</uri>
     </include>
 
   </world>

@@ -11,6 +11,7 @@ import math
 from sklearn.cluster import DBSCAN
 from scipy import stats
 from collections import Counter
+from collections import defaultdict
 
 def ransac(data, fit_model, distance_func, sample_size, max_distance, guess_inliers):
     #fit_model(data): input:data;  output:model
@@ -120,7 +121,34 @@ def Fast_Robutst_2PC(pc1,pc2):
 
     return theta,phi
 
-def planar_motion_calcu_single(img1,img2,k1,k2,method=1):
+def visualize_matches(img1, kp1, img2, kp2, matches):
+    # Draw the matches between the two images
+    # The matches argument is a list of DMatch objects, returned by the matcher
+    # Create a new image with the two input images side by side
+    h1, w1 = img1.shape[:2]
+    h2, w2 = img2.shape[:2]
+    vis = np.zeros((max(h1, h2), w1 + w2), dtype='uint8')
+    vis[:h1, :w1] = img1
+    vis[:h2, w1:w1 + w2] = img2
+    
+    # Draw the matches
+    for match in matches:
+        # Get the keypoints for each image
+        img1_idx = match.queryIdx
+        img2_idx = match.trainIdx
+        (x1, y1) = kp1[img1_idx].pt
+        (x2, y2) = kp2[img2_idx].pt
+        
+        # Draw a line between the keypoints in the new image
+        color = tuple(np.random.randint(0, 255, 3).tolist())
+        cv.line(vis, (int(x1), int(y1)), (int(x2) + w1, int(y2)), color, thickness=2)
+    
+    # Show the new image
+    cv.imshow('Matches', vis)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
+def planar_motion_calcu_single(img1,img2,k1,k2,method=1,show_img = 0):
     use_knn_matcher = 1
     if method == 0:
         # Initiate ORB detector
@@ -150,12 +178,16 @@ def planar_motion_calcu_single(img1,img2,k1,k2,method=1):
         else:
             bf = cv.BFMatcher(crossCheck=True)
             matches = bf.match(des1,des2)
-
-    # print("good match num = ", len(matches))      
+    
     match_point_num = len(matches)
-
-    if match_point_num < 10:
+    if match_point_num < 20:
         return [], []
+
+    if show_img:
+        visualize_matches(img1, kp1, img2, kp2, matches)
+        print("good match num = ", len(matches))      
+    
+    
 
     matchedPoints1 = np.ones((3,match_point_num),float)
     matchedPoints2 = np.ones((3,match_point_num),float)
@@ -233,22 +265,24 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose,show_img=0):
 
     for i in range(cam_num):
         for j in range(cam_num):
+            print(i+1,"   ",j+1)
             camera_offset = (cam_pose[i][2] - cam_pose[j][2])/math.pi*180
             image_now_1 = img1_list[i]
             image_now_2 = img2_list[j]
 
-            [Yaw, AngleT] = planar_motion_calcu_single(image_now_1,image_now_2,k1,k2,method=1) # use sift FP
+            [Yaw, AngleT] = planar_motion_calcu_single(image_now_1,image_now_2,k1,k2,method=1, show_img = show_img) # use sift FP
 
             if len(Yaw) == 0:
                 continue
-            Yaw -= camera_offset
+
+            Yaw -= camera_offset 
             total_yaw  = np.concatenate((total_yaw,Yaw))
             total_angleT = np.concatenate((total_angleT,AngleT))
 
             tmp_ij = np.zeros((2,len(Yaw)),int)
             tmp_ij[0,:] = i
             tmp_ij[1,:] = j
-            total_ij  = np.append(total_ij,tmp_ij,axis = 1)
+            total_ij  = np.append(total_ij,tmp_ij,axis = 1) #记录了是从第一个坐标系的i到第二个坐标系的j的估计
     
     
     total_yaw = remap2T(total_yaw,-180,180)
@@ -285,7 +319,7 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose,show_img=0):
             now_j = total_ij[1,i]
             count += 1
         rho_index.append(count)
-
+    
     if show_img:
         index  = np.arange(0,len(best_inlier_index))
         plt.scatter(index[best_inlier_index],total_yaw[best_inlier_index],s=2)
@@ -297,7 +331,7 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose,show_img=0):
     interextion_line = np.array([],float).reshape((2,-1))
     for i in range(0,len(t1)):
         for j in range(i,len(t1)):
-            if rho_index[i]==rho_index[j]:
+            if rho_index[i]==rho_index[j]:#对于同一个相机估计得到的结果不做求交点操作
                 continue
             first_t1 = t1[i][0:2]
             first_t2 = t2[i][0:2]
@@ -315,15 +349,117 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose,show_img=0):
                 res = np.linalg.inv(A) @ b
                 rho1 = res[0][0]
                 rho2 = res[1][0]
-                if abs(rho1)>10 or abs(rho2)>10:
+                if abs(rho1)>10 or abs(rho2)>10: #distance between two robot is too large
                     continue
                 res = rho1*first_t1 + first_t2
                 interextion_line = np.append(interextion_line,res,axis = 1)
             except:
                 continue
+    
+    #直接对相同两个相机之间的估计做一个平均，然后再求inv，看看是否会更加准确
+    average_t1 = []
+    average_t2 = []
+    # 创建默认值为列表的字典
+    index_dict = defaultdict(list)
+
+    # 遍历数据并将每个元素的索引添加到相应的列表中
+    for i, val in enumerate(rho_index):
+        index_dict[val].append(i)
+
+    for i, index_list in index_dict.items():
+        tmp_t1 = np.zeros((2,1),dtype=float)
+        tmp_t2 = np.zeros((2,1),dtype=float)
+
+        for now_index in index_list:
+            tmp_t1 += t1[now_index][0:2]
+            tmp_t2 += t2[now_index][0:2]
+        tmp_t1 /= len(index_list)
+        tmp_t2 /= len(index_list)
+
+        average_t1.append(tmp_t1)
+        average_t2.append(tmp_t2)
+
+    
+    
+    
+    
+    interextion_line = np.array([],float).reshape((2,-1))
+    for i in range(0,len(t1)):
+        average_A = np.zeros((2,2),dtype=float)
+        average_b = np.zeros((2,1),dtype=float)
+        average_t1 = np.zeros((2,1),dtype=float)
+        average_t2 = np.zeros((2,1),dtype=float)
+        count = 0
+        for j in range(i,len(t1)):
+            if rho_index[i]==rho_index[j]:#对于同一个相机估计得到的结果不做求交点操作
+                continue
+            if j<len(t1)-1 and rho_index[j] != rho_index[j+1]:
+                try:
+                    average_A /= count
+                    average_b /= count
+                    average_t1 /= count
+                    average_t2 /= count
+
+                    res = np.linalg.inv(average_A) @ average_b
+                    rho1 = res[0][0]
+                    rho2 = res[1][0]
+                    if abs(rho1)>10 or abs(rho2)>10: #distance between two robot is too large
+                        continue
+                    res = rho1*first_t1 + first_t2
+                    interextion_line = np.append(interextion_line,res,axis = 1)
+
+                    average_A = np.zeros((2,2),dtype=float)
+                    average_b = np.zeros((2,1),dtype=float)
+                    average_t1 = np.zeros((2,1),dtype=float)
+                    average_t2 = np.zeros((2,1),dtype=float)
+                    print(res)
+                except:
+                    continue
+            
+            first_t1 = t1[i][0:2]
+            first_t2 = t2[i][0:2]
+
+            second_t1 = t1[j][0:2]
+            second_t2 = t2[j][0:2]
+
+            e1 = first_t1
+            e2 = -second_t1
+
+            #三个向量都在平面上
+            A = np.array([[e1[0][0],e2[0][0]],[e1[1][0], e2[1][0]]])
+            b = (second_t2 - first_t2)[0:2]
+
+            average_A += A
+            average_b +=b
+            average_t1 += first_t1
+            average_t2 += first_t2
+            count += 1
+
+            
     if show_img:
         plt.figure()
-        plt.scatter(interextion_line[0,:],interextion_line[1,:],c = 'r',s=2)
+        plt.subplot(1,2,1)
+        x_plot = np.arange(-2,2,0.01)
+        last = [0,0,0,0]
+        for i in range(0,len(t1)):
+            for j in range(i,len(t1)):
+                if rho_index[i]==rho_index[j]:
+                    continue
+                first_t1 = t1[i][0:2]
+                first_t2 = t2[i][0:2]
+
+                second_t1 = t1[j][0:2]
+                second_t2 = t2[j][0:2]
+                plt.plot(first_t1[0] * x_plot + first_t2[0], first_t1[1] * x_plot + first_t2[1],linewidth=1)
+                plt.plot(second_t1[0] * x_plot + second_t2[0], second_t1[1] * x_plot + second_t2[1],linewidth=1)
+                if not (first_t2[0]==last[0] and first_t2[1]==last[1]):
+                    plt.scatter(first_t2[0], first_t2[1],c = 'r',s=100,marker='o', edgecolors='b')
+                if not (second_t2[0] == last[2] or second_t2[1] == last[3]):
+                    plt.scatter(second_t2[0], second_t2[1],c = 'r',s=100,marker='o', edgecolors='b')
+                last = [first_t2[0],first_t2[1],second_t2[0],second_t2[1]]
+
+        plt.subplot(1,2,2)
+        plt.scatter(interextion_line[0,:],interextion_line[1,:],c = 'r',s=20,marker='o', edgecolors='g')
         plt.title("Line Intersection")
         plt.show()
 

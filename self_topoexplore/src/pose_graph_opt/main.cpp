@@ -82,6 +82,8 @@ namespace ceres
 
                     std::map<int, Pose2d>::iterator pose_begin_iter =
                         poses->find(constraint.id_begin);
+
+                    
                     CHECK(pose_begin_iter != poses->end())
                         << "Pose with ID: " << constraint.id_begin << " not found.";
                     std::map<int, Pose2d>::iterator pose_end_iter =
@@ -92,8 +94,32 @@ namespace ceres
                     const Eigen::Matrix3d sqrt_information =
                         constraint.information.llt().matrixL();
                     // Ceres will take ownership of the pointer.
+
+                    Eigen::Matrix<double, 2, 2> rot_v1 = RotationMatrix2D(constraint.vertex_1[2]);
+                    Eigen::Matrix<double, 2, 1> tran_v1;
+                    tran_v1 << constraint.vertex_1[0], constraint.vertex_1[1];
+ 
+                    Eigen::Matrix<double, 2, 2> rot_v2 = RotationMatrix2D(constraint.vertex_2[2]);
+                    Eigen::Matrix<double, 2, 1> tran_v2;
+                    tran_v2 << constraint.vertex_2[0], constraint.vertex_2[1];
+
+                    Eigen::Matrix<double, 2, 2> rot_est = RotationMatrix2D(constraint.est_pose[2]);
+                    Eigen::Matrix<double, 2, 1> tran_est;
+                    tran_est << constraint.est_pose[0], constraint.est_pose[1];
+
+                    
+                    Eigen::Matrix2d rot_mat;
+                    rot_mat = rot_v1 * rot_est * rot_v2.transpose();
+                    Eigen::Matrix<double,2,1> trans_mat_ = rot_v1*( rot_est * (-rot_v2.transpose() *tran_v2 ) + tran_est) + tran_v1;
+
+                    double yaw_angle = std::atan2(rot_mat(1,0),rot_mat(0,0));
+
+                    // std::cout<<"estimated robot center trans is "<<trans_mat_(0,0)<<"  "<<trans_mat_(1,0)<<std::endl;
+                    // std::cout<<"estimated robot center yaw (in radian) is "<<yaw_angle<<std::endl;
+
+
                     ceres::CostFunction *cost_function = PoseGraph2dErrorTerm::Create(
-                        constraint.x, constraint.y, constraint.yaw_radians, sqrt_information);
+                        yaw_angle, trans_mat_ , sqrt_information);
 
                     problem->AddResidualBlock(
                         cost_function, loss_function, &pose_begin_iter->second.x,
@@ -128,13 +154,13 @@ namespace ceres
                 CHECK(problem != NULL);
 
                 ceres::Solver::Options options;
-                options.max_num_iterations = 100000;
+                options.max_num_iterations = 1000;
                 options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
 
                 ceres::Solver::Summary summary;
                 ceres::Solve(options, problem, &summary);
 
-                //   std::cout << summary.FullReport() << '\n';
+                // std::cout << summary.FullReport() << '\n';
 
                 return summary.IsSolutionUsable();
             }
@@ -219,5 +245,7 @@ int main(int argc, char **argv)
         std::cout << pair.first << " " << pair.second.x << " " << pair.second.y
                   << ' ' << pair.second.yaw_radians << '\n';
     }
+
+    
     return 0;
 }

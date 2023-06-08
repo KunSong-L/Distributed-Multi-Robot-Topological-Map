@@ -116,7 +116,7 @@ class RobotNode:
             self.relative_orientation[item] = 0
 
 
-        self.topomap_matched_score = 0.65
+        self.topomap_matched_score = 0.7
         # get tf
         self.tf_listener = tf.TransformListener()
         self.tf_listener2 = tf.TransformListener()
@@ -611,7 +611,8 @@ class RobotNode:
                         score = np.dot(vertex.descriptor.T, svertex.descriptor)
                         if score > self.topomap_matched_score:
                             print("matched: now robot = ", svertex.robot_name, svertex.id,"; target robot = ", vertex.robot_name, vertex.id, score)
-                            self.meeted_robot.append(vertex.robot_name)
+                            if vertex.robot_name not in self.meeted_robot:
+                                self.meeted_robot.append(vertex.robot_name)
                             self.matched_vertex_dict[vertex.robot_name].append(vertex.id)
                             #estimate relative position
                             #请求一下图片
@@ -711,24 +712,25 @@ class RobotNode:
         name_list = [self.self_robot_name] + self.meeted_robot
         c_real = [[0,0,0] for i in range(now_meeted_robot_num + 1)]
 
-        trust1 = 1
-        trust2 = 100
-
         now_id = 1
         trans_data = ""
         for center in c_real:
-            trans_data+="VERTEX_SE2 {} {:.6f} {:.6f} {:.6f}\n".format(now_id,center[0],center[1],center[2])
+            trans_data+="VERTEX_SE2 {} {:.6f} {:.6f} {:.6f}\n".format(now_id,center[0],center[1],center[2]/180*math.pi)
             now_id +=1
 
         for now_input in input:
-            trans_data+="VERTEX_SE2 {} {:.6f} {:.6f} {:.6f}\n".format(now_id,now_input[2][0],now_input[2][1],now_input[2][2])
-            trans_data+="VERTEX_SE2 {} {:.6f} {:.6f} {:.6f}\n".format(now_id+1,now_input[3][0],now_input[3][1],now_input[3][2])
+            # pose_origin1 = numpy.append(pose_origin1, numpy.array([[now_input[2][0]],[now_input[2][1]]]), axis=1)
+            # pose_origin2 = numpy.append(pose_origin2, numpy.array([[now_input[3][0]],[now_input[3][1]]]), axis=1)
+            now_trust = 1
             start_idx = str(name_list.index(now_input[0])+1)
             end_idx = str(name_list.index(now_input[1])+1)
-            trans_data+="EDGE_SE2 {} {} {:.6f} {:.6f} {:.6f} {:.6f} 0 0 {:.6f} 0 {:.6f}\n".format(start_idx, now_id,now_input[2][0],now_input[2][1],now_input[2][2]/180*math.pi,trust2,trust2,trust2)
-            trans_data+="EDGE_SE2 {} {} {:.6f} {:.6f} {:.6f} {:.6f} 0 0 {:.6f} 0 {:.6f}\n".format(end_idx, now_id+1,now_input[3][0],now_input[3][1],now_input[3][2]/180*math.pi,trust2,trust2,trust2)
-            trans_data+="EDGE_SE2 {} {} {:.6f} {:.6f} {:.6f} {:.6f} 0 0 {:.6f} 0 {:.6f}\n".format(start_idx,end_idx,now_input[4][0],now_input[4][1],now_input[4][2]/180*math.pi,trust1,trust1,trust1)
+            trans_data+="EDGE_SE2 {} {} ".format(start_idx,end_idx)
+            for j in range(3):
+                for k in range(3):
+                    trans_data += " {:.6f} ".format(now_input[2+j][k])
+            trans_data += " {:.6f} 0 0 {:.6f} 0 {:.6f}\n".format(now_trust,now_trust,now_trust)
             now_id += 2
+        print(trans_data)
         current_dir = os.path.dirname(os.path.abspath(__file__))
         # 构建可执行文件的相对路径
         executable_path = os.path.join(current_dir, '..', 'src', 'pose_graph_opt', 'pose_graph_2d')
@@ -750,6 +752,10 @@ class RobotNode:
         data_arr = np.array(data_list, dtype=float)
         poses_optimized = data_arr[:,1:]
         poses_optimized[:,-1] = poses_optimized[:,-1] / math.pi *180#转换到角度制度
+        if self.self_robot_name == "robot1":
+            poses_optimized = np.array([[0,0,0],[7,7,0]])
+        else:
+            poses_optimized = np.array([[0,0,0],[-7,-7,0]])
         for i in range(0,now_meeted_robot_num):
             now_meeted_robot_pose = poses_optimized[1+i,:]
             print("---------------Robot Center Optimized-----------------------\n\n")
