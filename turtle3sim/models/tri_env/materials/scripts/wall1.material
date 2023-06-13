@@ -11,7 +11,7 @@ material wall1/Image
 
       texture_unit
       {
-        texture bibliothekd.jpg
+        texture robot.jpg
 	      filtering trilinear
 	      scale 1 1
       }

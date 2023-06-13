@@ -380,7 +380,7 @@ class RobotNode:
                 self.last_nextmove = move_direction
                 goal_message, self.goal = self.get_move_goal(robot_name, current_pose, move_direction, basic_length+offset)#offset = 0
                 goal_marker = self.get_goal_marker(robot_name, current_pose, move_direction, basic_length+offset)
-                self.actoinclient.send_goal(goal_message)
+                # self.actoinclient.send_goal(goal_message)
                 self.goal_pub.publish(goal_marker)
 
         #deal with no place to go
@@ -433,6 +433,7 @@ class RobotNode:
         range = int(6/self.map_resolution)
         self.global_map_info = data.info
         shape = (data.info.height, data.info.width)
+        print(data.info.resolution)
         timenow = rospy.Time.now()
         #robot1/map->robot1/base_footprint
         self.tf_listener.waitForTransform(data.header.frame_id, robot_name+"/base_footprint", timenow, rospy.Duration(0.5))
@@ -447,13 +448,14 @@ class RobotNode:
             #获取当前一个小范围的grid map
             self.grid_map = self.global_map[max(self.current_loc_pixel[0]-range,0):min(self.current_loc_pixel[0]+range,shape[0]), max(self.current_loc_pixel[1]-range,0):min(self.current_loc_pixel[1]+range, shape[1])]
             self.grid_map[np.where(self.grid_map==-1)] = 255
-            if robot_name == 'robot1':
-                self.global_map[np.where(self.global_map==-1)] = 255
-                temp = self.global_map[max(self.current_loc_pixel[0]-range,0):min(self.current_loc_pixel[0]+range,shape[0]), max(self.current_loc_pixel[1]-range,0):min(self.current_loc_pixel[1]+range, shape[1])]
-                temp[np.where(temp==-1)] = 125
-                # cv2.imwrite(debug_path+"map.jpg", temp)
-                # cv2.imwrite(debug_path+"/globalmap.jpg", self.global_map)
             self.grid_map_ready = 1
+            #保存图片
+            self.global_map[np.where(self.global_map==-1)] = 255
+            temp = self.global_map[max(self.current_loc_pixel[0]-range,0):min(self.current_loc_pixel[0]+range,shape[0]), max(self.current_loc_pixel[1]-range,0):min(self.current_loc_pixel[1]+range, shape[1])]
+            temp[np.where(temp==-1)] = 125
+            cv2.imwrite(debug_path+self.self_robot_name + "_local_map.jpg", temp)
+            cv2.imwrite(debug_path+self.self_robot_name +"_global_map.jpg", self.global_map)
+            print("save a local map")
         except:
             # print("tf listener fails")
             pass
@@ -763,7 +765,6 @@ class RobotNode:
             self.map_frame_pose[self.meeted_robot[i]] = list()
             self.map_frame_pose[self.meeted_robot[i]].append(R.from_euler('z', now_meeted_robot_pose[2], degrees=True).as_matrix()) 
             self.map_frame_pose[self.meeted_robot[i]].append(np.array([now_meeted_robot_pose[0],now_meeted_robot_pose[1],0]))
-
 
 
 if __name__ == '__main__':

@@ -8,10 +8,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as R
 import math
-from sklearn.cluster import DBSCAN
-from scipy import stats
-from collections import Counter
-from collections import defaultdict
+import open3d as o3d
+
+
+
 
 def ransac(data, fit_model, distance_func, sample_size, max_distance, guess_inliers):
     #fit_model(data): input:data;  output:model
@@ -173,7 +173,7 @@ def planar_motion_calcu_single(img1,img2,k1,k2,method=1,show_img = 0):
             # Apply ratio test
             matches = []
             for i,(m,n) in enumerate(total_matches):
-                if m.distance < 0.7*n.distance:
+                if m.distance < 0.5*n.distance:
                     matches.append(m)
         else:
             bf = cv.BFMatcher(crossCheck=True)
@@ -239,7 +239,7 @@ def planar_motion_calcu_single(img1,img2,k1,k2,method=1,show_img = 0):
     return total_yaw, total_angleT
 
 
-def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose,show_img=0):
+def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose, pc1 , pc2, show_img=0):
     #cam pose:[[x,y,yaw],...]
     cam_num = len(cam_pose)
     height = img1.shape[0]
@@ -252,20 +252,14 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose,show_img=0):
 
         img1_list.append(img1_tmp)
         img2_list.append(img2_tmp)
-        
-    cam_R = []
-    cam_t = []
-    for pose in cam_pose:
-        cam_R.append(R.from_euler('z',pose[2],degrees=False).as_matrix())
-        cam_t.append(np.array([[pose[0]],[pose[1]],[0]]))
+
        
     total_yaw =np.array([],float)
     total_angleT= np.array([],float)
     total_ij = np.array([],int).reshape((2,-1))
-
+    
     for i in range(cam_num):
         for j in range(cam_num):
-            print(i+1,"   ",j+1)
             camera_offset = (cam_pose[i][2] - cam_pose[j][2])/math.pi*180
             image_now_1 = img1_list[i]
             image_now_2 = img2_list[j]
@@ -288,214 +282,84 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose,show_img=0):
     total_yaw = remap2T(total_yaw,-180,180)
     total_angleT = remap2T(total_angleT,-180,180)
 
-    sample_size = 3
+    sample_size = 2
     maxDistance = [5]
     yaw_result, best_inlier_index, inter_num = ransac(total_yaw.reshape((-1,1)),fitLineFcn,evalLineFcn,sample_size,maxDistance,guess_inliers = 0.4)
 
-    t1 = []
-    t2 = []
-    rho_index = []
+    est_rot = -yaw_result[0][0]
 
-    R_robot = R.from_euler('z', -yaw_result, degrees=True).as_matrix().reshape(3,3)
-    count = 0
-    now_i = total_ij[0,0]
-    now_j = total_ij[1,0]
-    for i in range(len(best_inlier_index)):
-        if best_inlier_index[i] != True:
-            continue
-        R_i = cam_R[total_ij[0,i]]
-        t_i = cam_t[total_ij[0,i]]
-        R_j = cam_R[total_ij[1,i]]
-        t_j = cam_t[total_ij[1,i]]
-        tmp_angle = total_angleT[i]
-        now_phi = total_angleT[i]/180*math.pi
-        t_cam = np.array([[np.cos(now_phi)], [-np.sin(now_phi)], [0]])
+    max_correspondence_distance = 0.5  #移动范围的阀值, meter 
+    icp_criteria = o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=100, relative_fitness=1e-8, relative_rmse=1e-8)
+    theta = -est_rot/180*np.pi
 
-        t1.append(R_i@t_cam)
-        t2.append(t_i - R_robot @ t_j)
+    trans_init = np.asarray([[np.cos(theta),-np.sin(theta),0,0],   # 4x4 identity matrix，这是一个转换矩阵，
+                            [np.sin(theta),np.cos(theta),0,0],   # 象征着没有任何位移，没有任何旋转，我们输入
+                            [0,0,1,0],   # 这个矩阵为初始变换
+                            [0,0,0,1]])
 
-        if now_i != total_ij[0,i] or now_j != total_ij[1,i]:
-            now_i = total_ij[0,i]
-            now_j = total_ij[1,i]
-            count += 1
-        rho_index.append(count)
-    
-    if show_img:
-        index  = np.arange(0,len(best_inlier_index))
-        plt.scatter(index[best_inlier_index],total_yaw[best_inlier_index],s=2)
-        plt.scatter(index[np.logical_not(best_inlier_index)],total_yaw[np.logical_not(best_inlier_index)],c = 'r',s=2)
-        plt.title("yaw inlier and outlier")
-        plt.show()
-    
-    #direction solve
-    interextion_line = np.array([],float).reshape((2,-1))
-    for i in range(0,len(t1)):
-        for j in range(i,len(t1)):
-            if rho_index[i]==rho_index[j]:#对于同一个相机估计得到的结果不做求交点操作
-                continue
-            first_t1 = t1[i][0:2]
-            first_t2 = t2[i][0:2]
+    processed_source = o3d.geometry.PointCloud()
+    processed_source.points = o3d.utility.Vector3dVector(pc2.T)
 
-            second_t1 = t1[j][0:2]
-            second_t2 = t2[j][0:2]
+    processed_target = o3d.geometry.PointCloud()
+    processed_target.points = o3d.utility.Vector3dVector(pc1.T)
+    #运行icp
+    reg_p2p = o3d.pipelines.registration.registration_icp(
+            processed_source, processed_target, max_correspondence_distance, trans_init,
+            o3d.pipelines.registration.TransformationEstimationPointToPoint(),icp_criteria)
 
-            e1 = first_t1
-            e2 = -second_t1
+    trans_1 = copy.deepcopy(reg_p2p.transformation)
 
-            #三个向量都在平面上
-            A = np.array([[e1[0][0],e2[0][0]],[e1[1][0], e2[1][0]]])
-            b = (second_t2 - first_t2)[0:2]
-            try:
-                res = np.linalg.inv(A) @ b
-                rho1 = res[0][0]
-                rho2 = res[1][0]
-                if abs(rho1)>10 or abs(rho2)>10: #distance between two robot is too large
-                    continue
-                res = rho1*first_t1 + first_t2
-                interextion_line = np.append(interextion_line,res,axis = 1)
-            except:
-                continue
-    
-    #直接对相同两个相机之间的估计做一个平均，然后再求inv，看看是否会更加准确
-    average_t1 = []
-    average_t2 = []
-    # 创建默认值为列表的字典
-    index_dict = defaultdict(list)
+    processed_source.transform(reg_p2p.transformation)
 
-    # 遍历数据并将每个元素的索引添加到相应的列表中
-    for i, val in enumerate(rho_index):
-        index_dict[val].append(i)
+    #变参数
+    max_correspondence_distance = 0.1  #移动范围的阀值, meter 
+    icp_criteria = o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=100, relative_fitness=1e-8, relative_rmse=1e-8)
 
-    for i, index_list in index_dict.items():
-        tmp_t1 = np.zeros((2,1),dtype=float)
-        tmp_t2 = np.zeros((2,1),dtype=float)
+    trans_init = np.eye(4,dtype=float)
 
-        for now_index in index_list:
-            tmp_t1 += t1[now_index][0:2]
-            tmp_t2 += t2[now_index][0:2]
-        tmp_t1 /= len(index_list)
-        tmp_t2 /= len(index_list)
+    #运行icp
+    reg_p2p = o3d.pipelines.registration.registration_icp(
+            processed_source, processed_target, max_correspondence_distance, trans_init,
+            o3d.pipelines.registration.TransformationEstimationPointToPoint(),icp_criteria)
 
-        average_t1.append(tmp_t1)
-        average_t2.append(tmp_t2)
 
-    
-    
-    
-    
-    interextion_line = np.array([],float).reshape((2,-1))
-    for i in range(0,len(t1)):
-        average_A = np.zeros((2,2),dtype=float)
-        average_b = np.zeros((2,1),dtype=float)
-        average_t1 = np.zeros((2,1),dtype=float)
-        average_t2 = np.zeros((2,1),dtype=float)
-        count = 0
-        for j in range(i,len(t1)):
-            if rho_index[i]==rho_index[j]:#对于同一个相机估计得到的结果不做求交点操作
-                continue
-            if j<len(t1)-1 and rho_index[j] != rho_index[j+1]:
-                try:
-                    average_A /= count
-                    average_b /= count
-                    average_t1 /= count
-                    average_t2 /= count
+    trans_2 = copy.deepcopy(reg_p2p.transformation)
+    final_trans = trans_2 @ trans_1
 
-                    res = np.linalg.inv(average_A) @ average_b
-                    rho1 = res[0][0]
-                    rho2 = res[1][0]
-                    if abs(rho1)>10 or abs(rho2)>10: #distance between two robot is too large
-                        continue
-                    res = rho1*first_t1 + first_t2
-                    interextion_line = np.append(interextion_line,res,axis = 1)
-
-                    average_A = np.zeros((2,2),dtype=float)
-                    average_b = np.zeros((2,1),dtype=float)
-                    average_t1 = np.zeros((2,1),dtype=float)
-                    average_t2 = np.zeros((2,1),dtype=float)
-                    print(res)
-                except:
-                    continue
-            
-            first_t1 = t1[i][0:2]
-            first_t2 = t2[i][0:2]
-
-            second_t1 = t1[j][0:2]
-            second_t2 = t2[j][0:2]
-
-            e1 = first_t1
-            e2 = -second_t1
-
-            #三个向量都在平面上
-            A = np.array([[e1[0][0],e2[0][0]],[e1[1][0], e2[1][0]]])
-            b = (second_t2 - first_t2)[0:2]
-
-            average_A += A
-            average_b +=b
-            average_t1 += first_t1
-            average_t2 += first_t2
-            count += 1
-
-            
-    if show_img:
-        plt.figure()
-        plt.subplot(1,2,1)
-        x_plot = np.arange(-2,2,0.01)
-        last = [0,0,0,0]
-        for i in range(0,len(t1)):
-            for j in range(i,len(t1)):
-                if rho_index[i]==rho_index[j]:
-                    continue
-                first_t1 = t1[i][0:2]
-                first_t2 = t2[i][0:2]
-
-                second_t1 = t1[j][0:2]
-                second_t2 = t2[j][0:2]
-                plt.plot(first_t1[0] * x_plot + first_t2[0], first_t1[1] * x_plot + first_t2[1],linewidth=1)
-                plt.plot(second_t1[0] * x_plot + second_t2[0], second_t1[1] * x_plot + second_t2[1],linewidth=1)
-                if not (first_t2[0]==last[0] and first_t2[1]==last[1]):
-                    plt.scatter(first_t2[0], first_t2[1],c = 'r',s=100,marker='o', edgecolors='b')
-                if not (second_t2[0] == last[2] or second_t2[1] == last[3]):
-                    plt.scatter(second_t2[0], second_t2[1],c = 'r',s=100,marker='o', edgecolors='b')
-                last = [first_t2[0],first_t2[1],second_t2[0],second_t2[1]]
-
-        plt.subplot(1,2,2)
-        plt.scatter(interextion_line[0,:],interextion_line[1,:],c = 'r',s=20,marker='o', edgecolors='g')
-        plt.title("Line Intersection")
-        plt.show()
-
-    # cluster
-    dbscan = DBSCAN(eps=0.05, min_samples=5).fit(interextion_line.T)#聚类
-    counter = Counter(dbscan.labels_)
-    most_common = counter.most_common(2)
-    if most_common[0][0]==-1:#-1 for outlier
-        most_common_label = most_common[1][0]
-    else:
-        most_common_label = most_common[0][0]
-    points_list = interextion_line[:,np.where(dbscan.labels_ == most_common_label)]
-
-    return [np.mean(points_list[0,:]), np.mean(points_list[1,:]),-yaw_result[0][0] ]
+    return [final_trans[1,3],final_trans[0,3],-math.atan2(final_trans[1,0],final_trans[0,0])/math.pi * 180 ]
 
 
 if __name__=="__main__":
-    img1 = cv.imread("/home/master/debug/robot1_self.jpg")
-    img2 = cv.imread("/home/master/debug/robot1_received.jpg")
+    file = "120_0_-0.5"
+    img1 = cv.imread("/home/master/debug/" + file + "/robot1_self.jpg")
+    img2 = cv.imread("/home/master/debug/" + file + "/robot1_received.jpg")
     img1 = cv.cvtColor(img1,cv.COLOR_BGR2GRAY)
     img2 = cv.cvtColor(img2,cv.COLOR_BGR2GRAY)
+
     x_offset = 0.1
     y_offset = 0.2
     cam_trans = [[x_offset,0,0],[0,y_offset,math.pi/2],[-x_offset,0.0,math.pi],[0,-y_offset,-math.pi/2]]
-    cam_R = []
-    cam_t = []
-    for pose in cam_trans:
-        cam_R.append(R.from_euler('z',pose[2],degrees=False).as_matrix())
-        cam_t.append(np.array([[pose[0]],[pose[1]],[0]]))
 
     # read K
     K1_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
     K2_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
 
-    
-    pose = planar_motion_calcu_mulit(img1,img2,K1_mat,K2_mat,cam_trans,show_img = 1)
+    pc_img1 = cv.imread("/home/master/debug/" + file + "/robot1_local_map.jpg",0)
+    pc_img2 = cv.imread("/home/master/debug/" + file + "/robot2_local_map.jpg",0)
+    img_width = int(pc_img1.shape[0]/2)
+    x1, y1 = np.where((pc_img1 > 90) & (pc_img1 < 110))
+    x2, y2 = np.where((pc_img2 > 90) & (pc_img2 < 110))
+    resolution = 0.05
+    pc1 = np.vstack((x1 - img_width, y1 - img_width, np.zeros(x1.shape,dtype=float))) * resolution
+    pc2 = np.vstack((x2 - img_width, y2 - img_width, np.zeros(x2.shape,dtype=float))) * resolution
+
+    fig = plt.figure(figsize=(8,8))
+    plt.scatter(pc1[0,:], pc1[1,:], 6, c='b', marker='o')
+    plt.scatter(pc2[0,:], pc2[1,:], 6, c='r', marker='o')
+    plt.show()
+
+    pose = planar_motion_calcu_mulit(img1,img2,K1_mat,K2_mat,cam_trans,pc1,pc2,show_img = 0)
+
     print(pose)
     
     

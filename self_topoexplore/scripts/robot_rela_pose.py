@@ -52,8 +52,6 @@ debug_path = "/home/master/debug/"
 
 class RobotNode:
     def __init__(self, robot_name, robot_list):#输入当前机器人，其他机器人的id list
-        
-
         self.cv_bridge = CvBridge()
         self.panoramic_view_pub = rospy.Publisher(
             robot_name+"/panoramic", Image, queue_size=1)
@@ -87,11 +85,11 @@ class RobotNode:
     def map_panoramic_callback(self, panoramic):
         if panoramic.header.frame_id == "robot1/odom":
             panoramic_view = self.cv_bridge.imgmsg_to_cv2(panoramic, desired_encoding="bgr8")
-            cv2.imwrite(debug_path+"robot1.jpg", panoramic_view)
+            cv2.imwrite(debug_path+"robot1_self.jpg", panoramic_view)
             self.robot1_ready=1
         if panoramic.header.frame_id == "robot2/odom":
             panoramic_view = self.cv_bridge.imgmsg_to_cv2(panoramic, desired_encoding="bgr8")
-            cv2.imwrite(debug_path+"robot2.jpg", panoramic_view)
+            cv2.imwrite(debug_path+"robot1_received.jpg", panoramic_view)
             self.robot2_ready=1
         
         if self.robot1_ready == 0 or self.robot2_ready==0:
@@ -101,7 +99,7 @@ class RobotNode:
         
 
 
-
+#保存图像测试用代码
 if __name__ == '__main__':
     time.sleep(3)
     rospy.init_node('topological_map')

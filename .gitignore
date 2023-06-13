@@ -8,6 +8,8 @@ __pycache__
 # zip file
 *.zip
 
+# old version
+old*
 # Distribution / packaging
 .Python
 build/
