@@ -3,7 +3,7 @@ from tkinter.constants import Y
 import rospy
 from rospy.rostime import Duration
 from rospy.timer import Rate, sleep
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, LaserScan
 import rospkg
 import tf
 from std_msgs.msg import String
@@ -22,6 +22,7 @@ from actionlib_msgs.msg import GoalStatusArray
 from gazebo_msgs.msg import ModelStates
 from self_topoexplore.msg import UnexploredDirectionsMsg
 from self_topoexplore.msg import TopoMapMsg
+from self_topoexplore.msg import ImageWithPointCloudMsg
 from TopoMap import Vertex, Edge, TopologicalMap
 from utils.imageretrieval.imageretrievalnet import init_network
 from utils.imageretrieval.extract_feature import cal_feature
@@ -45,7 +46,7 @@ from RelaPose_2pc_function import *
 
 import subprocess
 
-debug_path = "/home/master/debug/"
+debug_path = "/home/master/debug/test1/"
 
 class RobotNode:
     def __init__(self, robot_name, robot_list):#输入当前机器人，其他机器人的id list
@@ -93,7 +94,7 @@ class RobotNode:
         self.grid_map_ready = 0
         self.tf_transform_ready = 0
         self.cv_bridge = CvBridge()
-        self.map_resolution = float(rospy.get_param('map_resolution', 0.01))
+        self.map_resolution = float(rospy.get_param('map_resolution', 0.05))
         #topomap
         self.map = TopologicalMap(robot_name=robot_name, threshold=0.97)
         self.last_vertex = -1
@@ -128,9 +129,10 @@ class RobotNode:
         self.image_data_sub = None
 
         self.relative_pose_image = None
+        self.relative_pose_pc = None
         self.image_ready = 0
         self.image_req_publisher = rospy.Publisher('/request_image', String, queue_size=1)
-        self.image_data_pub = rospy.Publisher(robot_name+'/relative_pose_est_image', Image, queue_size=1)#发布自己节点的图片
+        self.image_data_pub = rospy.Publisher(robot_name+'/relative_pose_est_image', ImageWithPointCloudMsg, queue_size=1)#发布自己节点的图片
 
         x_offset = 0.1
         y_offset = 0.2
@@ -138,6 +140,9 @@ class RobotNode:
         self.estimated_vertex_pose = list() #["robot_i","robot_j",id1,id2,estimated_pose] suppose that i < j
         self.map_frame_pose = dict() # map_frame_pose[robot_j] is [R_j,t_j] R_j 3x3
         self.ready_for_topo_map = True
+        self.laser_scan_cos_sin = None
+        self.laser_scan_init = False
+        self.local_laserscan = None
         #move base
         self.actoinclient = actionlib.SimpleActionClient(robot_name+'/move_base', MoveBaseAction)
         self.trajectory_point = None
@@ -182,8 +187,25 @@ class RobotNode:
         
         rospy.Subscriber(
             robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
+        rospy.Subscriber(
+            robot_name+"/scan", LaserScan, self.laserscan_callback, queue_size=1)
         
         self.actoinclient.wait_for_server()
+
+
+    def laserscan_callback(self, scan):
+        ranges = np.array(scan.ranges)
+        
+        if not self.laser_scan_init:
+            angle_min = scan.angle_min
+            angle_increment = scan.angle_increment
+            laser_cos = np.cos(angle_min + angle_increment * np.arange(len(ranges)))
+            laser_sin = np.sin(angle_min + angle_increment * np.arange(len(ranges)))
+            self.laser_scan_cos_sin = np.stack([laser_cos, laser_sin])
+            self.laser_scan_init = True
+        
+        valid_indices = np.isfinite(ranges)
+        self.local_laserscan  = np.array(ranges * self.laser_scan_cos_sin)[:,valid_indices]
 
 
 
@@ -205,21 +227,42 @@ class RobotNode:
         image_message.header.frame_id = robot_name+"/odom"
         self.panoramic_view_pub.publish(image_message)
 
-    def receive_image_callback(self, image):
+    def receive_image_callback(self, image_pc):
+        image = image_pc.image
         self.relative_pose_image = self.cv_bridge.imgmsg_to_cv2(image)
         self.image_ready = 1
+
+        pc = image_pc.lidar_point
+        self.relative_pose_pc = pc
 
     def receive_image_req_callback(self, req):
         #req: i_j_id
         input_list = req.data.split()  # 将字符串按照空格分割成一个字符串列表
         if input_list[1] in self.self_robot_name:
             # publish image msg
+            img_pc_msg = ImageWithPointCloudMsg()
             image_index = int(input_list[2])
             req_image = self.map.vertex[image_index].local_image
             header = Header(stamp=rospy.Time.now())
             image_msg = self.cv_bridge.cv2_to_imgmsg(req_image, encoding="mono8")
             image_msg.header = header
-            self.image_data_pub.publish(image_msg) #finish publish message
+            #use local map for icp
+            # pc_image = self.map.vertex[image_index].localMap
+            # x, y = np.where((pc_image > 90) & (pc_image < 110))
+            # half_image_width = int(pc_image.shape[0]/2)
+            # x = x-half_image_width
+            # y = y-half_image_width
+
+            #use real laser scan for icp
+            x = self.map.vertex[image_index].local_laserscan[0,:]
+            y = self.map.vertex[image_index].local_laserscan[1,:]
+
+            pc =  np.concatenate((x, y)).tolist()
+            img_pc_msg.image = image_msg
+            img_pc_msg.lidar_point = pc
+            self.image_data_pub.publish(img_pc_msg) #finish publish message
+
+
             print("robot = ",self.self_robot_name,"  publish image index = ",image_index)
 
 
@@ -256,7 +299,7 @@ class RobotNode:
         # ----finish getting pose----
         
         current_pose = copy.deepcopy(self.pose)
-        vertex = Vertex(robot_name, id=-1, pose=current_pose, descriptor=feature, local_image=cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY))
+        vertex = Vertex(robot_name, id=-1, pose=current_pose, descriptor=feature, local_image=cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY), local_laserscan=self.local_laserscan)
         self.last_vertex, self.current_node, matched_flag = self.map.add(vertex, self.last_vertex, self.current_node)
         if matched_flag==0:# add a new vertex
             #create a new one
@@ -380,7 +423,7 @@ class RobotNode:
                 self.last_nextmove = move_direction
                 goal_message, self.goal = self.get_move_goal(robot_name, current_pose, move_direction, basic_length+offset)#offset = 0
                 goal_marker = self.get_goal_marker(robot_name, current_pose, move_direction, basic_length+offset)
-                # self.actoinclient.send_goal(goal_message)
+                self.actoinclient.send_goal(goal_message)
                 self.goal_pub.publish(goal_marker)
 
         #deal with no place to go
@@ -433,7 +476,6 @@ class RobotNode:
         range = int(6/self.map_resolution)
         self.global_map_info = data.info
         shape = (data.info.height, data.info.width)
-        print(data.info.resolution)
         timenow = rospy.Time.now()
         #robot1/map->robot1/base_footprint
         self.tf_listener.waitForTransform(data.header.frame_id, robot_name+"/base_footprint", timenow, rospy.Duration(0.5))
@@ -449,13 +491,12 @@ class RobotNode:
             self.grid_map = self.global_map[max(self.current_loc_pixel[0]-range,0):min(self.current_loc_pixel[0]+range,shape[0]), max(self.current_loc_pixel[1]-range,0):min(self.current_loc_pixel[1]+range, shape[1])]
             self.grid_map[np.where(self.grid_map==-1)] = 255
             self.grid_map_ready = 1
-            #保存图片
             self.global_map[np.where(self.global_map==-1)] = 255
+            #保存图片
             temp = self.global_map[max(self.current_loc_pixel[0]-range,0):min(self.current_loc_pixel[0]+range,shape[0]), max(self.current_loc_pixel[1]-range,0):min(self.current_loc_pixel[1]+range, shape[1])]
             temp[np.where(temp==-1)] = 125
             cv2.imwrite(debug_path+self.self_robot_name + "_local_map.jpg", temp)
             cv2.imwrite(debug_path+self.self_robot_name +"_global_map.jpg", self.global_map)
-            print("save a local map")
         except:
             # print("tf listener fails")
             pass
@@ -618,7 +659,7 @@ class RobotNode:
                             self.matched_vertex_dict[vertex.robot_name].append(vertex.id)
                             #estimate relative position
                             #请求一下图片
-                            self.image_data_sub  = rospy.Subscriber(vertex.robot_name+"/relative_pose_est_image", Image, self.receive_image_callback)
+                            self.image_data_sub  = rospy.Subscriber(vertex.robot_name+"/relative_pose_est_image", ImageWithPointCloudMsg, self.receive_image_callback)
                             req_string = self.self_robot_name[-1] +" "+vertex.robot_name[-1]+" "+str(vertex.id)
                             while not self.image_ready:
                                 # 发布请求图片的消息
@@ -630,10 +671,31 @@ class RobotNode:
 
                             img1 = svertex.local_image
                             img2 = self.relative_pose_image #from other robot
-                            cv2.imwrite(debug_path+self.self_robot_name + "_self.jpg", img1)
-                            cv2.imwrite(debug_path+self.self_robot_name + "_received.jpg", img2)
+
+                            #use local map
+                            # pc1_image = svertex.localMap
+                            # half_img_width = int(pc1_image.shape[0]/2)
+
+                            # x1, y1 = np.where((pc1_image > 90) & (pc1_image < 110))
+                            # x2_y2 = np.array(self.relative_pose_pc).reshape((2,-1))
+
+                            # pc1 = np.vstack((x1 - half_img_width, y1 - half_img_width, np.zeros(x1.shape,dtype=float))) * self.map_resolution
+                            # pc2 = np.vstack((x2_y2, np.zeros(x2_y2.shape[1],dtype=float))) * self.map_resolution
+                            
+                            #use local laser scan
+                            x2_y2 = np.array(self.relative_pose_pc).reshape((2,-1))
+                            pc1 = np.vstack((svertex.local_laserscan, np.zeros(svertex.local_laserscan.shape[1],dtype=float)))
+                            pc2 = np.vstack((x2_y2, np.zeros(x2_y2.shape[1],dtype=float)))
+                            #save result
+                            tmp = (pc1, pc2)
+                            cv2.imwrite(debug_path+self.self_robot_name + "_self"+str(svertex.id)+".jpg", img1)
+                            cv2.imwrite(debug_path+self.self_robot_name + "_received"+str(svertex.id)+".jpg", img2)
+                            np.savez(debug_path + self.self_robot_name + 'pc_data'+ str(svertex.id)+'.npz', *tmp)
                             #estimated pose
-                            pose = planar_motion_calcu_mulit(img1,img2,k1 = self.K_mat,k2 = self.K_mat,cam_pose = self.cam_trans)
+                            pose = planar_motion_calcu_mulit(img1,img2,k1 = self.K_mat,k2 = self.K_mat,cam_pose = self.cam_trans, pc1=pc1,pc2=pc2)
+                            print("estimated pose is:\n",pose)
+                            if pose is None:
+                                continue
                             self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.pose,list(vertex.pose),pose])
                             
                             matched_vertex.append(vertex)
@@ -732,7 +794,7 @@ class RobotNode:
                     trans_data += " {:.6f} ".format(now_input[2+j][k])
             trans_data += " {:.6f} 0 0 {:.6f} 0 {:.6f}\n".format(now_trust,now_trust,now_trust)
             now_id += 2
-        print(trans_data)
+
         current_dir = os.path.dirname(os.path.abspath(__file__))
         # 构建可执行文件的相对路径
         executable_path = os.path.join(current_dir, '..', 'src', 'pose_graph_opt', 'pose_graph_2d')
@@ -754,14 +816,15 @@ class RobotNode:
         data_arr = np.array(data_list, dtype=float)
         poses_optimized = data_arr[:,1:]
         poses_optimized[:,-1] = poses_optimized[:,-1] / math.pi *180#转换到角度制度
-        if self.self_robot_name == "robot1":
-            poses_optimized = np.array([[0,0,0],[7,7,0]])
-        else:
-            poses_optimized = np.array([[0,0,0],[-7,-7,0]])
+        # print("estimated pose is:\n", poses_optimized)
+        # if self.self_robot_name == "robot1":
+        #     poses_optimized = np.array([[0,0,0],[7,7,0]])
+        # else:
+        #     poses_optimized = np.array([[0,0,0],[-7,-7,0]])
         for i in range(0,now_meeted_robot_num):
             now_meeted_robot_pose = poses_optimized[1+i,:]
             print("---------------Robot Center Optimized-----------------------\n\n")
-            print(self.self_robot_name,"estimated robot pose robot = ", self.meeted_robot[i],now_meeted_robot_pose)
+            print(self.self_robot_name,"estimated robot pose of ", self.meeted_robot[i],now_meeted_robot_pose)
             self.map_frame_pose[self.meeted_robot[i]] = list()
             self.map_frame_pose[self.meeted_robot[i]].append(R.from_euler('z', now_meeted_robot_pose[2], degrees=True).as_matrix()) 
             self.map_frame_pose[self.meeted_robot[i]].append(np.array([now_meeted_robot_pose[0],now_meeted_robot_pose[1],0]))

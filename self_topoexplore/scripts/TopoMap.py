@@ -48,12 +48,13 @@ def get_frontier_points(map, resolution=0.01) -> list:
 
 class Vertex:
 
-    def __init__(self, robot_name=None, id=None, pose=None, descriptor=None, localMap=None, local_image=None) -> None:
+    def __init__(self, robot_name=None, id=None, pose=None, descriptor=None, localMap=None, local_image=None, local_laserscan=None) -> None:
         self.robot_name = robot_name
         self.id = id
         self.pose = pose
         self.descriptor = descriptor
         self.localMap = localMap
+        self.local_laserscan = local_laserscan #2*n array
         self.navigableDirection = []
         self.frontierPoints = []
         self.frontierDistance = []

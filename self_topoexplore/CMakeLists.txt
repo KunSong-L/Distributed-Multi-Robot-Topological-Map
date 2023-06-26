@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   geometry_msgs
   message_generation
+  sensor_msgs
 )
 # find_package( G2O REQUIRED )
 
@@ -57,6 +58,7 @@ add_message_files(
   VertexMsg.msg
   TopoMapMsg.msg
   UnexploredDirectionsMsg.msg
+  ImageWithPointCloudMsg.msg
 )
 
 ## Generate services in the 'srv' folder
@@ -76,6 +78,7 @@ generate_messages(
   DEPENDENCIES
   std_msgs
   geometry_msgs
+  sensor_msgs
 )
 
 ################################################

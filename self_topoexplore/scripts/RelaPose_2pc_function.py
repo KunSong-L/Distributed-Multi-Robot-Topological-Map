@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as R
 import math
 import open3d as o3d
-
+from ransac_icp import *
 
 
 
@@ -114,6 +114,7 @@ def Fast_Robutst_2PC(pc1,pc2):
         b = C@a
         theta = np.array([[np.arctan2(b[1,0],b[0,0])], [np.arctan2(b[1,1],b[0,1])]]) + phi
     else:
+        return None,None
         tmp = np.array([[np.sign(m)*(-p)/(p**2+q**2)**0.5], [np.sign(m)*(-q)/(p**2+q**2)**0.5]])#cos(2phi) and sin(2phi)
         phi = np.arctan2(tmp[1],tmp[0])[0]/2
         b = C @ np.array([[np.cos(phi)],[np.sin(phi)]])
@@ -227,8 +228,11 @@ def planar_motion_calcu_single(img1,img2,k1,k2,method=1,show_img = 0):
 
         [Yaw, AngleT] = Fast_Robutst_2PC(P_i,P_j)#theta：旋转角度；phi：位移角度
 
-        total_yaw = np.append(total_yaw,Yaw.T)
-        total_angleT = np.append(total_angleT,AngleT.T)
+        try:
+            total_yaw = np.append(total_yaw,Yaw.T)
+            total_angleT = np.append(total_angleT,AngleT.T)
+        except:
+            pass
 
 
     total_yaw = total_yaw/np.pi*180
@@ -241,6 +245,7 @@ def planar_motion_calcu_single(img1,img2,k1,k2,method=1,show_img = 0):
 
 def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose, pc1 , pc2, show_img=0):
     #cam pose:[[x,y,yaw],...]
+    estimated_yaw_min_num = 200
     cam_num = len(cam_pose)
     height = img1.shape[0]
     widht = img1.shape[1]//4
@@ -278,6 +283,10 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose, pc1 , pc2, show_img=0):
             tmp_ij[1,:] = j
             total_ij  = np.append(total_ij,tmp_ij,axis = 1) #记录了是从第一个坐标系的i到第二个坐标系的j的估计
     
+    print("Number of estimated yaw is:", len(total_yaw))
+    if len(total_yaw) < estimated_yaw_min_num:
+        print("------------Not enough matched feature point!------------------")
+        return None
     
     total_yaw = remap2T(total_yaw,-180,180)
     total_angleT = remap2T(total_angleT,-180,180)
@@ -286,53 +295,82 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose, pc1 , pc2, show_img=0):
     maxDistance = [5]
     yaw_result, best_inlier_index, inter_num = ransac(total_yaw.reshape((-1,1)),fitLineFcn,evalLineFcn,sample_size,maxDistance,guess_inliers = 0.4)
 
-    est_rot = -yaw_result[0][0]
+    est_rot = -yaw_result[0][0] 
+    if show_img:
+        plt.figure()
+        x = np.arange(0,total_yaw.shape[0])
+        plt.scatter(x,total_yaw,c="b",s=2)
+        plt.scatter(x[best_inlier_index],total_yaw[best_inlier_index],c="r",s=2)
+        plt.legend(["total","inlier"])
+        plt.title("Yaw Angle")
+        plt.show()
 
-    max_correspondence_distance = 0.5  #移动范围的阀值, meter 
-    icp_criteria = o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=100, relative_fitness=1e-8, relative_rmse=1e-8)
-    theta = -est_rot/180*np.pi
+        plt.figure()
+        x = np.arange(0,total_angleT.shape[0])
+        plt.scatter(x,total_angleT,c="b",s=2)
+        plt.scatter(x[best_inlier_index],total_angleT[best_inlier_index],c="r",s=2)
+        plt.legend(["total","inlier"])
+        plt.title("Translation Angle")
+        plt.show()
+        
+    print("estimated rot (in degree) is",est_rot)
+    # max_correspondence_distance = 0.5  #移动范围的阀值, meter 
+    # icp_criteria = o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=100, relative_fitness=1e-8, relative_rmse=1e-8)
+    # theta = -est_rot/180*np.pi
 
-    trans_init = np.asarray([[np.cos(theta),-np.sin(theta),0,0],   # 4x4 identity matrix，这是一个转换矩阵，
-                            [np.sin(theta),np.cos(theta),0,0],   # 象征着没有任何位移，没有任何旋转，我们输入
-                            [0,0,1,0],   # 这个矩阵为初始变换
-                            [0,0,0,1]])
+    # trans_init = np.asarray([[np.cos(theta),-np.sin(theta),0,0],   # 4x4 identity matrix，这是一个转换矩阵，
+    #                         [np.sin(theta),np.cos(theta),0,0],   # 象征着没有任何位移，没有任何旋转，我们输入
+    #                         [0,0,1,0],   # 这个矩阵为初始变换
+    #                         [0,0,0,1]])
 
     processed_source = o3d.geometry.PointCloud()
-    processed_source.points = o3d.utility.Vector3dVector(pc2.T)
+    pc2_offset = copy.deepcopy(pc2)
+    pc2_offset[2,:] -= 0.1
+    processed_source.points = o3d.utility.Vector3dVector(np.vstack([pc2.T,pc2_offset.T]))
 
     processed_target = o3d.geometry.PointCloud()
-    processed_target.points = o3d.utility.Vector3dVector(pc1.T)
-    #运行icp
-    reg_p2p = o3d.pipelines.registration.registration_icp(
-            processed_source, processed_target, max_correspondence_distance, trans_init,
-            o3d.pipelines.registration.TransformationEstimationPointToPoint(),icp_criteria)
+    pc1_offset = copy.deepcopy(pc1)
+    pc1_offset[2,:] -= 0.1
+    processed_target.points = o3d.utility.Vector3dVector(np.vstack([pc1.T,pc1_offset.T]))
 
-    trans_1 = copy.deepcopy(reg_p2p.transformation)
+    final_R, final_t = ransac_icp(processed_source, processed_target, -est_rot/180*np.pi, vis=show_img)
 
-    processed_source.transform(reg_p2p.transformation)
+    if final_R is None or final_t is None:
+        return None
+    else:
+        return [final_t[0][0],final_t[1][0], -math.atan2(final_R[1,0],final_R[0,0])/math.pi*180]
+    # #运行icp
+    # reg_p2p = o3d.pipelines.registration.registration_icp(
+    #         processed_source, processed_target, max_correspondence_distance, trans_init,
+    #         o3d.pipelines.registration.TransformationEstimationPointToPoint(),icp_criteria)
 
-    #变参数
-    max_correspondence_distance = 0.1  #移动范围的阀值, meter 
-    icp_criteria = o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=100, relative_fitness=1e-8, relative_rmse=1e-8)
+    # trans_1 = copy.deepcopy(reg_p2p.transformation)
 
-    trans_init = np.eye(4,dtype=float)
+    # processed_source.transform(reg_p2p.transformation)
 
-    #运行icp
-    reg_p2p = o3d.pipelines.registration.registration_icp(
-            processed_source, processed_target, max_correspondence_distance, trans_init,
-            o3d.pipelines.registration.TransformationEstimationPointToPoint(),icp_criteria)
+    # #变参数
+    # max_correspondence_distance = 0.1  #移动范围的阀值, meter 
+    # icp_criteria = o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=100, relative_fitness=1e-8, relative_rmse=1e-8)
+
+    # trans_init = np.eye(4,dtype=float)
+
+    # #运行icp
+    # reg_p2p = o3d.pipelines.registration.registration_icp(
+    #         processed_source, processed_target, max_correspondence_distance, trans_init,
+    #         o3d.pipelines.registration.TransformationEstimationPointToPoint(),icp_criteria)
 
 
-    trans_2 = copy.deepcopy(reg_p2p.transformation)
-    final_trans = trans_2 @ trans_1
+    # trans_2 = copy.deepcopy(reg_p2p.transformation)
+    # final_trans = trans_2 @ trans_1
 
-    return [final_trans[1,3],final_trans[0,3],-math.atan2(final_trans[1,0],final_trans[0,0])/math.pi * 180 ]
+    # return [final_trans[1,3],final_trans[0,3],-math.atan2(final_trans[1,0],final_trans[0,0])/math.pi * 180 ]
 
 
 if __name__=="__main__":
-    file = "120_0_-0.5"
-    img1 = cv.imread("/home/master/debug/" + file + "/robot1_self.jpg")
-    img2 = cv.imread("/home/master/debug/" + file + "/robot1_received.jpg")
+    file = "test1/"
+    frame_index = "1"
+    img1 = cv.imread("/home/master/debug/" + file + "robot1_self" + frame_index +".jpg")
+    img2 = cv.imread("/home/master/debug/" + file + "robot1_received" + frame_index +".jpg")
     img1 = cv.cvtColor(img1,cv.COLOR_BGR2GRAY)
     img2 = cv.cvtColor(img2,cv.COLOR_BGR2GRAY)
 
@@ -341,24 +379,32 @@ if __name__=="__main__":
     cam_trans = [[x_offset,0,0],[0,y_offset,math.pi/2],[-x_offset,0.0,math.pi],[0,-y_offset,-math.pi/2]]
 
     # read K
+    
     K1_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
     K2_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
-
-    pc_img1 = cv.imread("/home/master/debug/" + file + "/robot1_local_map.jpg",0)
-    pc_img2 = cv.imread("/home/master/debug/" + file + "/robot2_local_map.jpg",0)
-    img_width = int(pc_img1.shape[0]/2)
-    x1, y1 = np.where((pc_img1 > 90) & (pc_img1 < 110))
-    x2, y2 = np.where((pc_img2 > 90) & (pc_img2 < 110))
-    resolution = 0.05
-    pc1 = np.vstack((x1 - img_width, y1 - img_width, np.zeros(x1.shape,dtype=float))) * resolution
-    pc2 = np.vstack((x2 - img_width, y2 - img_width, np.zeros(x2.shape,dtype=float))) * resolution
-
+    
+    input_method = 2
+    if input_method ==1:
+        pc_img1 = cv.imread("/home/master/debug/" + file + "/robot1_local_map.jpg",0)
+        pc_img2 = cv.imread("/home/master/debug/" + file + "/robot2_local_map.jpg",0)
+        img_width = int(pc_img1.shape[0]/2)
+        x1, y1 = np.where((pc_img1 > 90) & (pc_img1 < 110))
+        x2, y2 = np.where((pc_img2 > 90) & (pc_img2 < 110))
+        resolution = 0.05
+        pc1 = np.vstack((x1 - img_width, y1 - img_width, np.zeros(x1.shape,dtype=float))) * resolution
+        pc2 = np.vstack((x2 - img_width, y2 - img_width, np.zeros(x2.shape,dtype=float))) * resolution
+    else:
+    # array input
+        loaddata = np.load("/home/master/debug/test1/robot1pc_data" + frame_index +".npz")
+        pc1 = loaddata["arr_0"]
+        pc2 = loaddata["arr_1"]
     fig = plt.figure(figsize=(8,8))
     plt.scatter(pc1[0,:], pc1[1,:], 6, c='b', marker='o')
     plt.scatter(pc2[0,:], pc2[1,:], 6, c='r', marker='o')
+    plt.legend(["robot1","robot2"])
     plt.show()
 
-    pose = planar_motion_calcu_mulit(img1,img2,K1_mat,K2_mat,cam_trans,pc1,pc2,show_img = 0)
+    pose = planar_motion_calcu_mulit(img1,img2,K1_mat,K2_mat,cam_trans,pc1,pc2,show_img = 1 )
 
     print(pose)
     
