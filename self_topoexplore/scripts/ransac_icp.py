@@ -152,7 +152,7 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
     max_fit_time = 0
     print("RANSACing...")
     failed_reason = [0,0,0]
-    max_intertation = 100000
+    max_intertation = 10000
     while total_time < max_intertation:
         total_time += 1
         srcCorr = random.sample(range(srcNum), 2)
@@ -178,9 +178,9 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
         # print("estimated is: ", math.atan2(R[1,0],R[0,0])/math.pi*180, "error is: ", math.sin(init_yaw_guess - math.atan2(R[1,0],R[0,0])))
         
         #在这里引入角度约束！！！！！！！！！！！
-        # if not abs(math.fmod(init_yaw_guess - math.atan2(R[1,0],R[0,0])+ math.pi, 2*math.pi)- math.pi)  < 0.3:
-        #     failed_reason[2] += 1
-        #     continue
+        if not abs(math.fmod(init_yaw_guess - math.atan2(R[1,0],R[0,0])+ math.pi, 2*math.pi)- math.pi)  < 0.3:
+            failed_reason[2] += 1
+            continue
         
         A = np.transpose((R @ srcPoints.T) + np.tile(T, (1, srcNum)))
         fit_times += 1

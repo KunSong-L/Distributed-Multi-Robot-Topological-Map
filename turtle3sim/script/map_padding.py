@@ -37,7 +37,6 @@ class MapPadding:
         map_message.info.origin.position.y -= padding*map.info.resolution
         self.map_pub.publish(map_message)
         # before_send = np.asarray(map_message.data).reshape((map_message.info.height, map_message.info.width))
-        # cv2.imwrite("/home/zzl/zzlWorkspace/debug/globalmapbegfore.jpg", before_send)
 
         # pose = PoseStamped()
         # pose.header.frame_id = map_message.header.frame_id

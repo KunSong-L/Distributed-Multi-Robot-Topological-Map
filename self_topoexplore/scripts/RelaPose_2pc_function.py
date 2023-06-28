@@ -114,7 +114,6 @@ def Fast_Robutst_2PC(pc1,pc2):
         b = C@a
         theta = np.array([[np.arctan2(b[1,0],b[0,0])], [np.arctan2(b[1,1],b[0,1])]]) + phi
     else:
-        return None,None
         tmp = np.array([[np.sign(m)*(-p)/(p**2+q**2)**0.5], [np.sign(m)*(-q)/(p**2+q**2)**0.5]])#cos(2phi) and sin(2phi)
         phi = np.arctan2(tmp[1],tmp[0])[0]/2
         b = C @ np.array([[np.cos(phi)],[np.sin(phi)]])
@@ -270,7 +269,6 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose, pc1 , pc2, show_img=0):
             image_now_2 = img2_list[j]
 
             [Yaw, AngleT] = planar_motion_calcu_single(image_now_1,image_now_2,k1,k2,method=1, show_img = show_img) # use sift FP
-
             if len(Yaw) == 0:
                 continue
 
@@ -313,7 +311,7 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose, pc1 , pc2, show_img=0):
         plt.title("Translation Angle")
         plt.show()
         
-    print("estimated rot (in degree) is",est_rot)
+    print("estimated rot (in degree) is",-est_rot)
     # max_correspondence_distance = 0.5  #移动范围的阀值, meter 
     # icp_criteria = o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=100, relative_fitness=1e-8, relative_rmse=1e-8)
     # theta = -est_rot/180*np.pi
@@ -338,7 +336,7 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose, pc1 , pc2, show_img=0):
     if final_R is None or final_t is None:
         return None
     else:
-        return [final_t[0][0],final_t[1][0], -math.atan2(final_R[1,0],final_R[0,0])/math.pi*180]
+        return [final_t[0][0],final_t[1][0], math.atan2(final_R[1,0],final_R[0,0])/math.pi*180]
     # #运行icp
     # reg_p2p = o3d.pipelines.registration.registration_icp(
     #         processed_source, processed_target, max_correspondence_distance, trans_init,
@@ -368,9 +366,10 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose, pc1 , pc2, show_img=0):
 
 if __name__=="__main__":
     file = "test1/"
-    frame_index = "1"
-    img1 = cv.imread("/home/master/debug/" + file + "robot1_self" + frame_index +".jpg")
-    img2 = cv.imread("/home/master/debug/" + file + "robot1_received" + frame_index +".jpg")
+    frame_index = "2"
+    robot_number = "1"
+    img1 = cv.imread("/home/master/debug/" + file + "robot" + robot_number+ "_self" + frame_index +".jpg")
+    img2 = cv.imread("/home/master/debug/" + file + "robot" + robot_number+ "_received" + frame_index +".jpg")
     img1 = cv.cvtColor(img1,cv.COLOR_BGR2GRAY)
     img2 = cv.cvtColor(img2,cv.COLOR_BGR2GRAY)
 

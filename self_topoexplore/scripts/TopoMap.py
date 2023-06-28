@@ -83,7 +83,7 @@ class TopologicalMap:
         self.center = None
         self.center_dict = dict()
         self.offset_angle = 0
-        self.map_resolution = float(rospy.get_param('map_resolution', 0.01))
+        self.map_resolution = float(rospy.get_param('map_resolution', 0.05))
     
     def insert(self, vertex=None, edge=None) -> None:
         self.vertex.append(vertex)
@@ -135,6 +135,7 @@ class TopologicalMap:
         picked_vertex = None
         picked_vertex_id = 0
         if type == "new":
+            #准备在新加入的节点附近计算一系列前沿点
             for i in range(len(self.vertex)):
                 vertex = self.vertex[i]
                 if vertex.robot_name == self.robot_name and vertex.id == vertex_id:
@@ -146,7 +147,6 @@ class TopologicalMap:
             picked_vertex_id = vertex_id
         shape = picked_vertex.localMap.shape
         center = np.array([int(shape[0]/2), int(shape[1]/2)])
-        has_node = 0
         if vertex_id == -1:
             pass
         frontiers = get_frontier_points(picked_vertex.localMap,resolution=self.map_resolution)#返回一系列边界中心
@@ -154,20 +154,23 @@ class TopologicalMap:
         temp_frontier_dis = []
         temp_frontier_pos = []
         temp_angle = []
+        #计算边界点距离中心的距离、在局部坐标系下的位置、角度
         for front in frontiers:
             front = np.array([front[0], front[1]])# in image frame
             dis = np.sqrt(np.sum(np.square(front-center))) * resolution
             frontier_local_frame = np.array([front[1] - center[1], front[0]-center[0] ])*resolution
             angle = math.degrees(math.atan2(frontier_local_frame[1],frontier_local_frame[0]))
-            if has_node == 0:
-                # dis -= 4
-                temp_frontier_dis.append(dis)
-                temp_frontier_pos.append(frontier_local_frame)# frontier In local frame
-                temp_angle.append(angle)
+
+            # dis -= 4
+            temp_frontier_dis.append(dis)
+            temp_frontier_pos.append(frontier_local_frame)# frontier In local frame
+            temp_angle.append(angle)
+        
         if len(temp_angle) < len(self.vertex[picked_vertex_id].navigableDirection) and type=="old":
             self.vertex[picked_vertex_id].frontierDistance = temp_frontier_dis
             self.vertex[picked_vertex_id].frontierPoints = temp_frontier_pos
             self.vertex[picked_vertex_id].navigableDirection = temp_angle
+        #一般只有new这个情况
         if type == "new":
             self.vertex[picked_vertex_id].frontierDistance = temp_frontier_dis
             self.vertex[picked_vertex_id].frontierPoints = temp_frontier_pos
