@@ -6,7 +6,7 @@ local_costmap:
   publish_frequency: 10.0
   transform_tolerance: 0.5  
 
-  inflation_radius: 0.1
+  inflation_radius: 0.01
 
   static_map: false  
   rolling_window: true

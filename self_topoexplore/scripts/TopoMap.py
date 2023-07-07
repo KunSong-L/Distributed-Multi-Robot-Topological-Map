@@ -103,7 +103,7 @@ class TopologicalMap:
             point1 = np.array([vertex.pose[0], vertex.pose[1]])
             point2 = np.array([items.pose[0], items.pose[1]])
             dis = np.linalg.norm(point1 - point2)
-            if score > self.threshold or dis < 2.5:  #找到距离最近的点，以及一个匹配的点
+            if score > self.threshold or dis < 1.5:  #找到距离最近的点，以及一个匹配的点
                 matched_flag = 1
                 if score > max_score: #find best match
                     max_score = score
@@ -161,7 +161,6 @@ class TopologicalMap:
             frontier_local_frame = np.array([front[1] - center[1], front[0]-center[0] ])*resolution
             angle = math.degrees(math.atan2(frontier_local_frame[1],frontier_local_frame[0]))
 
-            # dis -= 4
             temp_frontier_dis.append(dis)
             temp_frontier_pos.append(frontier_local_frame)# frontier In local frame
             temp_angle.append(angle)

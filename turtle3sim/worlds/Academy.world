@@ -41,5 +41,14 @@
     <include>
       <uri>model://add_wall2</uri>
     </include>
+    <include>
+      <uri>model://add_wall4</uri>
+    </include>
+    <include>
+      <uri>model://add_wall5</uri>
+    </include>
+    <include>
+      <uri>model://add_wall6</uri>
+    </include>
   </world>
 </sdf>

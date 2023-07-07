@@ -3,6 +3,7 @@ from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 from geometry_msgs.msg import Quaternion, PoseStamped, Point
 from scipy.spatial.transform import Rotation as R
+import numpy as np
 
 def set_marker(robot_name, id, pose, color=(0.5, 0, 0.5), action=Marker.ADD):
     now = rospy.Time.now()
@@ -105,3 +106,23 @@ def get_net_param(state):
 
     return net_params
 
+def if_frontier(window):
+    if 100 in window: # 障碍物
+        return False
+    if 0 not in window: # 可通过
+        return False
+    if 255 not in window: # 未知
+        return False
+    return True
+
+def detect_frontier(image):
+    kernel_size = 1
+    step_size = 3
+    frontier_points = []
+    shape = image.shape
+    for i in range(0,shape[0]-kernel_size,step_size):
+        for j in range(0,shape[1]-kernel_size,step_size):
+            if if_frontier(image[i - kernel_size : i+kernel_size+1, j - kernel_size : j+kernel_size+1]): #找到已知和未知的边界
+                frontier_points.append([i, j])
+    
+    return np.fliplr(np.array(frontier_points))

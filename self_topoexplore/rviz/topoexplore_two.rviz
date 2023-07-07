@@ -266,6 +266,16 @@ Visualization Manager:
         frontier_point: true
       Queue Size: 100
       Value: true
+    - Alpha: 0.699999988079071
+      Class: rviz/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: true
+      Name: Map
+      Topic: /robot2/move_base/local_costmap/costmap
+      Unreliable: false
+      Use Timestamp: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -294,7 +304,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 34.50008010864258
+      Distance: 45.57854080200195
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -302,17 +312,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -0.11585642397403717
-        Y: -1.5097473859786987
-        Z: 0.22035175561904907
+        X: 0.6731390953063965
+        Y: -2.0418665409088135
+        Z: 0.4149487614631653
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.3497964143753052
+      Pitch: 1.5447962284088135
       Target Frame: <Fixed Frame>
-      Yaw: 2.9754109382629395
+      Yaw: 3.1204123497009277
     Saved: ~
 Window Geometry:
   Displays:
@@ -331,4 +341,4 @@ Window Geometry:
     collapsed: true
   Width: 1976
   X: 2304
-  Y: 366
+  Y: 188

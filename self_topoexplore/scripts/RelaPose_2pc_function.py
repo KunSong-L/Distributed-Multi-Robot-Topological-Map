@@ -311,7 +311,7 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose, pc1 , pc2, show_img=0):
         plt.title("Translation Angle")
         plt.show()
         
-    print("estimated rot (in degree) is",-est_rot)
+    print("estimated rot (in degree) is",est_rot)
     # max_correspondence_distance = 0.5  #移动范围的阀值, meter 
     # icp_criteria = o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=100, relative_fitness=1e-8, relative_rmse=1e-8)
     # theta = -est_rot/180*np.pi
@@ -331,7 +331,7 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose, pc1 , pc2, show_img=0):
     pc1_offset[2,:] -= 0.1
     processed_target.points = o3d.utility.Vector3dVector(np.vstack([pc1.T,pc1_offset.T]))
 
-    final_R, final_t = ransac_icp(processed_source, processed_target, -est_rot/180*np.pi, vis=show_img)
+    final_R, final_t = ransac_icp(processed_source, processed_target, est_rot/180*np.pi, vis=show_img)
 
     if final_R is None or final_t is None:
         return None
@@ -365,8 +365,8 @@ def planar_motion_calcu_mulit(img1,img2,k1,k2,cam_pose, pc1 , pc2, show_img=0):
 
 
 if __name__=="__main__":
-    file = "test1/"
-    frame_index = "2"
+    file = "good/0704/"
+    frame_index = "4"
     robot_number = "1"
     img1 = cv.imread("/home/master/debug/" + file + "robot" + robot_number+ "_self" + frame_index +".jpg")
     img2 = cv.imread("/home/master/debug/" + file + "robot" + robot_number+ "_received" + frame_index +".jpg")
@@ -394,7 +394,7 @@ if __name__=="__main__":
         pc2 = np.vstack((x2 - img_width, y2 - img_width, np.zeros(x2.shape,dtype=float))) * resolution
     else:
     # array input
-        loaddata = np.load("/home/master/debug/test1/robot1pc_data" + frame_index +".npz")
+        loaddata = np.load("/home/master/debug/" + file + "robot" + robot_number+ "pc_data" + frame_index +".npz")
         pc1 = loaddata["arr_0"]
         pc2 = loaddata["arr_1"]
     fig = plt.figure(figsize=(8,8))

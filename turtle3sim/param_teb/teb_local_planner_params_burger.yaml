@@ -26,14 +26,14 @@ TebLocalPlannerROS:
  min_turning_radius: 0.0
  footprint_model: # types: "point", "circular", "two_circles", "line", "polygon"
  #radius: 0.12 # for type "circular"
-   vertices: [[-0.12, -0.12], [-0.12, 0.12],[0.12, 0.12], [0.12, -0.12]]
+  vertices: [[-0.08, -0.08], [-0.08, 0.08],[0.08, 0.08], [0.08, -0.08]]
    #vertices: [[-0.1, -0.26], [-0.1, 0.26],[0.287, 0.26], [0.287, -0.26]]
 
  # GoalTolerance
 
  xy_goal_tolerance: 0.2
- yaw_goal_tolerance: 0.5
- free_goal_vel: False
+ yaw_goal_tolerance: 3
+ free_goal_vel: True
 
  # Obstacles
 
