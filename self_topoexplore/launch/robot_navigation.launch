@@ -1,0 +1,14 @@
+<launch>
+
+  <arg name="model" default="burger"/>
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find self_topoexplore)/rviz/topo_navigation.rviz" />
+
+
+  <node name="map_building" pkg="self_topoexplore" type="topo_navigation.py" output="screen">
+    <param name="network" value="retrievalSfM120k-vgg16-gem" />
+    <param name="platform" value="cuda" />
+    <param name="robot_name" value="robot1"/>
+    <param name="robot_num" value="1"/>
+  </node>
+
+</launch>

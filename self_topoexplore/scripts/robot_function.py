@@ -5,7 +5,7 @@ from geometry_msgs.msg import Quaternion, PoseStamped, Point
 from scipy.spatial.transform import Rotation as R
 import numpy as np
 
-def set_marker(robot_name, id, pose, color=(0.5, 0, 0.5), action=Marker.ADD):
+def set_marker(robot_name, id, pose, color=(0.5, 0, 0.5), action=Marker.ADD, scale = 0.3):
     now = rospy.Time.now()
     marker_message = Marker()
     marker_message.header.frame_id = robot_name + "/odom"
@@ -28,9 +28,9 @@ def set_marker(robot_name, id, pose, color=(0.5, 0, 0.5), action=Marker.ADD):
 
     marker_message.pose.position = now_vertex_pose
     marker_message.pose.orientation = now_vertex_ori
-    marker_message.scale.x = 0.3
-    marker_message.scale.y = 0.3
-    marker_message.scale.z = 0.3
+    marker_message.scale.x = scale
+    marker_message.scale.y = scale
+    marker_message.scale.z = scale
     marker_message.color.a = 1.0
     marker_message.color.r = color[0]
     marker_message.color.g = color[1]
@@ -38,7 +38,7 @@ def set_marker(robot_name, id, pose, color=(0.5, 0, 0.5), action=Marker.ADD):
 
     return marker_message
 
-def set_edge(robot_name, id, poses, type="edge"):
+def set_edge(robot_name, id, poses, type="edge", color = (0,1,0), scale = 0.05):
     now = rospy.Time.now()
     path_message = Marker()
     path_message.header.frame_id = robot_name + "/odom"
@@ -48,9 +48,9 @@ def set_edge(robot_name, id, poses, type="edge"):
     if type=="edge":
         path_message.type = Marker.LINE_STRIP
         path_message.color.a = 1.0
-        path_message.color.r = 0.0
-        path_message.color.g = 1.0
-        path_message.color.b = 0.0
+        path_message.color.r = color[0]
+        path_message.color.g = color[1]
+        path_message.color.b = color[2]
     elif type=="arrow":
         path_message.type = Marker.ARROW
         path_message.color.a = 1.0
@@ -58,9 +58,9 @@ def set_edge(robot_name, id, poses, type="edge"):
         path_message.color.g = 0.0
         path_message.color.b = 0.0
     path_message.action = Marker.ADD
-    path_message.scale.x = 0.05
-    path_message.scale.y = 0.05
-    path_message.scale.z = 0.05
+    path_message.scale.x = scale
+    path_message.scale.y = scale
+    path_message.scale.z = scale
 
     point_1 = Point()
     point_1.x = poses[0][0]
@@ -126,3 +126,29 @@ def detect_frontier(image):
                 frontier_points.append([i, j])
     
     return np.fliplr(np.array(frontier_points))
+
+def calculate_entropy(array):
+    num_bins = 20
+    hist, bins = np.histogram(array, bins=num_bins)
+    probabilities = hist / len(array)
+    probabilities = probabilities[np.where(probabilities != 0)] 
+    entropy = -np.sum(probabilities * np.log2(probabilities))
+
+    return entropy
+
+def sparse_point_cloud(data,delta):
+    # 对 xy 平面的前两列进行排序
+    sorted_indices = np.lexsort(data[:, :2].T)
+
+    # 计算每个点的坐标变化
+    diffs = np.diff(data[sorted_indices, :2], axis=0)
+
+    # 找到变化大于等于 delta 的索引位置
+    keep_indices = np.where(np.sum(np.abs(diffs) >= delta, axis=1))[0]
+
+    # 添加最后一个点的索引位置
+    keep_indices = np.concatenate(([0], keep_indices + 1))
+
+    # 根据索引位置获取新的数组
+    result = data[sorted_indices[keep_indices]]
+    return result

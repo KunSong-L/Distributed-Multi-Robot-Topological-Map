@@ -24,34 +24,13 @@
     </include>
 
     <include>
-      <uri>model://ISCAS_groundplane</uri>
+      <uri>model://simple_groudplane</uri>
     </include>
 
     <include>
-      <uri>model://ISCAS_Museum</uri>
-      <pose>0 0 0 0 0 -1.57</pose>
+      <uri>model://simple_room</uri>
+      <pose>0 0 0 0 0 0</pose>
     </include>
 
-    <include>
-      <uri>model://academy_wall</uri>
-    </include>
-    <include>
-      <uri>model://add_wall</uri>
-    </include>
-    <include>
-      <uri>model://add_wall2</uri>
-    </include>
-    <include>
-      <uri>model://add_wall4</uri>
-    </include>
-    <include>
-      <uri>model://add_wall5</uri>
-    </include>
-    <include>
-      <uri>model://add_wall6</uri>
-    </include>
-    <include>
-      <uri>model://add_wall7</uri>
-    </include>
   </world>
 </sdf>

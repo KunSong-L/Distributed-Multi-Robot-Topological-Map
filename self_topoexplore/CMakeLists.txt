@@ -56,6 +56,7 @@ add_message_files(
   BinaryArrayMsg.msg
   EdgeMsg.msg
   VertexMsg.msg
+  SupportVertexMsg.msg
   TopoMapMsg.msg
   UnexploredDirectionsMsg.msg
   ImageWithPointCloudMsg.msg

@@ -10,8 +10,6 @@ import math
 def Distance(p1, p2):
     return np.linalg.norm(p1 - p2)
 
-
-
 def notTooClose(p,disThreshold):
     return np.linalg.norm(p[0] - p[1]) > disThreshold
 
@@ -102,7 +100,7 @@ def calculateTrans(src, tgt):
     return tmp_R, T
 
 def ICP(src, tgt,tgtKDT,fitThreshold):
-    print("ICPing...")
+    # print("ICPing...")
     limit = fitThreshold
     retR = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     retT = np.array([[0], [0], [0]])
@@ -150,7 +148,7 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
     fit_times=0
     total_time = 0
     max_fit_time = 0
-    print("RANSACing...")
+    # print("RANSACing...")
     failed_reason = [0,0,0]
     max_intertation = 10000
     while total_time < max_intertation:
@@ -178,9 +176,10 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
         # print("estimated is: ", math.atan2(R[1,0],R[0,0])/math.pi*180, "error is: ", math.sin(init_yaw_guess - math.atan2(R[1,0],R[0,0])))
         
         #在这里引入角度约束！！！！！！！！！！！
-        if not abs(math.fmod(init_yaw_guess - math.atan2(R[1,0],R[0,0])+ math.pi, 2*math.pi)- math.pi)  < 0.3:
-            failed_reason[2] += 1
-            continue
+        if init_yaw_guess:
+            if not abs(math.fmod(init_yaw_guess - math.atan2(R[1,0],R[0,0])+ math.pi, 2*math.pi)- math.pi)  < 0.3:
+                failed_reason[2] += 1
+                continue
         
         A = np.transpose((R @ srcPoints.T) + np.tile(T, (1, srcNum)))
         fit_times += 1
@@ -198,8 +197,8 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
             break
     ransac_match_ratio = maxCount/min(srcNum,tgtNum)
     
-    print("RANSAC calculated %d times, maximum matched number: %d, max match find in time: %d" % (fit_times, maxCount, max_fit_time))
-    print("RANSAC MATCHED Ratio: %f"%(ransac_match_ratio))
+    # print("RANSAC calculated %d times, maximum matched number: %d, max match find in time: %d" % (fit_times, maxCount, max_fit_time))
+    # print("RANSAC MATCHED Ratio: %f"%(ransac_match_ratio))
 
     if ransac_match_ratio < 0.5:
         print("RANSCA not matched")
@@ -213,8 +212,8 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
     # R1 = np.eye(3,dtype=float)
     # T1 = np.array([0,-0.5,0]).reshape(3,1)
 
-    print("RANSAC RESULT IS: \n", R1,"\n",T1)
-    print("RANSAC YAW ANGLE IS: \n", math.atan2(R1[1,0],R1[0,0])/math.pi*180)
+    # print("RANSAC RESULT IS: \n", R1,"\n",T1)
+    # print("RANSAC YAW ANGLE IS: \n", math.atan2(R1[1,0],R1[0,0])/math.pi*180)
     A = np.transpose((R1 @ srcPoints.T) + np.tile(T1, (1, srcNum)))
     A=o3d.utility.Vector3dVector(A)
     src.points = A
@@ -228,8 +227,8 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
         A=o3d.utility.Vector3dVector(A)
         source_pc.points = A
         o3d.visualization.draw_geometries([source_pc, target_pc])
-    print('\nrotation:\n', R)
-    print('transition:\n', T)
+    # print('\nrotation:\n', R)
+    # print('transition:\n', T)
 
     return R, T
 

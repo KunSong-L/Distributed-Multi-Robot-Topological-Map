@@ -11,4 +11,8 @@
   </include>
   </group>
 
+  <node name="map_analysis" pkg="turtlebot3sim" type="map_analysis.py" output="screen">
+    <param name="robot_name" value="robot1"/>
+  </node>
+
 </launch>
