@@ -8,7 +8,7 @@ Panels:
         - /Status1
         - /TF1/Frames1
       Splitter Ratio: 0.6617646813392639
-    Tree Height: 270
+    Tree Height: 1666
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -211,7 +211,7 @@ Visualization Manager:
       Marker Topic: /robot1/visualization/marker
       Name: MarkerArray
       Namespaces:
-        {}
+        topological_map: true
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -219,7 +219,7 @@ Visualization Manager:
       Marker Topic: /robot1/visualization/edge
       Name: MarkerArray
       Namespaces:
-        {}
+        topological_map: true
       Queue Size: 100
       Value: true
     - Class: rviz/TF
@@ -289,7 +289,7 @@ Visualization Manager:
       Marker Topic: /robot1/frontier_points
       Name: Marker
       Namespaces:
-        {}
+        frontier_point: true
       Queue Size: 100
       Value: true
     - Alpha: 0.699999988079071
@@ -301,6 +301,14 @@ Visualization Manager:
       Topic: /robot1/move_base/local_costmap/costmap
       Unreliable: false
       Use Timestamp: false
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /robot1/vertex_free_space
+      Name: MarkerArray
+      Namespaces:
+        "": true
+      Queue Size: 100
       Value: true
   Enabled: true
   Global Options:
@@ -330,7 +338,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 48.77992248535156
+      Distance: 39.03001403808594
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -338,17 +346,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 4.674417018890381
-        Y: 5.209408760070801
-        Z: 0.5066046714782715
+        X: -7.5185980796813965
+        Y: 5.971890926361084
+        Z: 0.4890781342983246
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5647963285446167
+      Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
-      Yaw: 3.1353847980499268
+      Yaw: 4.710391044616699
     Saved: ~
 Window Geometry:
   Displays:

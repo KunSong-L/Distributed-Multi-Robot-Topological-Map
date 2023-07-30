@@ -11,8 +11,7 @@ from nav_msgs.msg import Odometry
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.msg import Path
 from torch import jit
-from visualization_msgs.msg import Marker
-from visualization_msgs.msg import MarkerArray
+from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Twist, PoseStamped, Point
 from laser_geometry import LaserProjection
 import message_filters
@@ -27,6 +26,7 @@ from TopoMap import Support_Vertex, Vertex, Edge, TopologicalMap
 from utils.imageretrieval.imageretrievalnet import init_network
 from utils.imageretrieval.extract_feature import cal_feature
 from utils.topomap_bridge import TopomapToMessage, MessageToTopomap
+from utils.astar import grid_path, topo_map_path
 import torch
 from torch.utils.model_zoo import load_url
 from torchvision import transforms
@@ -40,11 +40,11 @@ import math
 import time
 import copy
 from std_msgs.msg import Header
-import sys
 from robot_function import *
 from RelaPose_2pc_function import *
 
 import subprocess
+import scipy.ndimage
 
 debug_path = "/home/master/debug/test1/"
 save_result = False
@@ -78,8 +78,8 @@ class RobotNode:
             transforms.ToTensor(),
             normalize
         ])
-        #color: frontier, main_vertex, support vertex, main edge, support edge
-        self.vis_color = np.array([[0xFF, 0x7F, 0x51], [0xD6, 0x28, 0x28],[0xFC, 0xBF, 0x49],[0x00, 0x30, 0x49],[0x00, 0x96, 0xC7]])/255.0
+        #color: frontier, main_vertex, support vertex, edge
+        self.vis_color = np.array([[0xFF, 0x7F, 0x51], [0xD6, 0x28, 0x28],[0xFC, 0xBF, 0x49],[0x00, 0x30, 0x49],[0x1E, 0x90, 0xFF]])/255.0
         
         #robot data
         self.pose = [0,0,0] # x y yaw angle in degree
@@ -109,6 +109,7 @@ class RobotNode:
         self.vertex_dict[self.self_robot_name] = list()
         self.matched_vertex_dict = dict()
         self.now_feature = np.array([])
+        self.adj_list = dict()
 
         self.edge_dict = dict()
         self.relative_position = dict()
@@ -174,25 +175,25 @@ class RobotNode:
             robot_name+"/panoramic", Image, queue_size=1)
         self.topomap_pub = rospy.Publisher(
             robot_name+"/topomap", TopoMapMsg, queue_size=1)
-
         self.start_pub = rospy.Publisher(
             "/start_exp", String, queue_size=1) #发一个start
         self.frontier_publisher = rospy.Publisher(robot_name+'/frontier_points', Marker, queue_size=1)
+        self.vertex_free_space_pub = rospy.Publisher(robot_name+'/vertex_free_space', MarkerArray, queue_size=1)
+        self.find_better_path_pub = rospy.Publisher(robot_name+'/find_better_path', String, queue_size=100)
             
         rospy.Subscriber(
             robot_name+"/panoramic", Image, self.map_panoramic_callback, queue_size=1)
         rospy.Subscriber(
             robot_name+"/map", OccupancyGrid, self.map_grid_callback, queue_size=1)
-
         for robot in robot_list:
             rospy.Subscriber(
                 robot+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1, buff_size=52428800)
-        
         rospy.Subscriber(
             robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
         rospy.Subscriber(
             robot_name+"/scan", LaserScan, self.laserscan_callback, queue_size=1)
-        
+        rospy.Subscriber(robot_name+'/find_better_path', String, self.find_better_path_callback, queue_size=100)
+
         self.actoinclient.wait_for_server()
 
 
@@ -289,6 +290,39 @@ class RobotNode:
         self.frontier_publisher.publish(frontier_marker)
         # --------------finish visualize frontier---------------
 
+        #可视化vertex free space
+        # 创建所有平面的Marker消息
+        markers = []
+
+        for index, now_vertex in enumerate(self.map.vertex):
+            if now_vertex.local_free_space_rect == [0,0,0,0]:
+                continue
+            x1,y1,x2,y2 = now_vertex.local_free_space_rect
+            marker = Marker()
+            marker.header.frame_id = robot_name + "/map"
+            marker.type = Marker.CUBE
+            marker.action = Marker.ADD
+            marker.pose.position.x = (x1 + x2)/2.0
+            marker.pose.position.y = (y1 + y2)/2.0
+            marker.pose.position.z = 0.0
+            marker.pose.orientation.x = 0.0
+            marker.pose.orientation.y = 0.0
+            marker.pose.orientation.z = 0.0
+            marker.pose.orientation.w = 1.0
+            marker.scale.x = abs(x2 - x1)
+            marker.scale.y = abs(y2 - y1)
+            marker.scale.z = 0.03 # 指定平面的厚度
+            marker.color.r = 0.0
+            marker.color.g = 1.0
+            marker.color.b = 0.0
+            marker.color.a = 0.2 # 指定平面的透明度
+            marker.id = index
+            markers.append(marker)
+        # 将所有Marker消息放入一个MarkerArray消息中，并发布它们
+        marker_array = MarkerArray()
+        marker_array.markers = markers
+        self.vertex_free_space_pub.publish(marker_array)
+        
         #可视化vertex
         marker_array = MarkerArray()
         marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL)
@@ -391,8 +425,6 @@ class RobotNode:
                 break
         if not free_line_flag:#if not a line in free space, create a support vertex
             return 2
-        
-        
         return 0
 
         
@@ -446,8 +478,8 @@ class RobotNode:
             #check whether the robot stop moving
             if self.finish_explore == False and len(self.total_frontier) == 0:
                 self.finish_explore = True
-                print("Robot Exploration Finished!")
-                print("Optimizing Topological Map......")
+                print("----------Robot Exploration Finished!-----------")
+                self.map.vertex[-1].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[-1].pose[0:2], self.map_origin, self.map_resolution)
                 self.add_supportive_vertex()
         
         if create_a_vertex_flag: # create a vertex
@@ -456,24 +488,142 @@ class RobotNode:
                 gray_local_img = cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY)
                 vertex = Vertex(robot_name, id=-1, pose=current_pose, descriptor=feature, local_image=gray_local_img, local_laserscan_angle=self.local_laserscan_angle)
                 self.last_vertex_id, self.current_node = self.map.add(vertex)
-            
+                # add rect to vertex
+                
             elif create_a_vertex_flag == 2:#create a support vertex
                 vertex = Support_Vertex(robot_name, id=-1, pose=current_pose)
                 self.last_vertex_id, self.current_node = self.map.add(vertex)
+                # add rect to vertex
+            if self.last_vertex_id > 0:
+                self.map.vertex[-2].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[-2].pose[0:2], self.map_origin, self.map_resolution)
             
             self.create_edge()
-            
 
             self.vertex_map_ready = True
             while self.grid_map_ready==0 or self.tf_transform_ready==0:
                 time.sleep(0.5)
             self.vertex_dict[self.self_robot_name].append(vertex.id)
             self.change_goal()
-         
+            
+            if create_a_vertex_flag == 1:
+                refine_topo_map_msg = String()
+                refine_topo_map_msg.data = "Start_find_path!"
+                self.find_better_path_pub.publish(refine_topo_map_msg)
+
+            
+    
+    def find_better_path_callback(self,data):
+        #start compare distance between grid map and topo map
+        #estimate distance in topo map
+        if len(self.map.edge) == 0:
+            return
+        
+        self.adj_list = dict()
+        self.edge_to_adj_list()
+        #get total id and pose
+        target_id_list = []
+        target_pose_list = []
+        map_origin = np.array(self.map_origin)
+        now_global_map = copy.deepcopy(self.global_map)
+        now_global_map_expand = expand_obstacles(now_global_map, 2) 
+        for now_vertex in self.map.vertex:
+            #turn pose into map frame
+            vertex_pose = (np.array(now_vertex.pose[0:2]) - map_origin)/self.map_resolution
+            if now_global_map_expand[int(vertex_pose[1]), int(vertex_pose[0])] == 0:
+                #make sure this vertex is free on grid map
+                target_pose_list.append((int(vertex_pose[1]), int(vertex_pose[0]))) #(y,x) format
+                target_id_list.append(now_vertex.id)
+        if len(target_pose_list) == 0:
+            print("every vertex is on expanded grid map!")
+            return
+        #estimate path on topomap
+        topo_map = topo_map_path(self.adj_list,target_id_list[-1], target_id_list[0:-1])
+        topo_map.get_path()
+        topopath_length = np.array(topo_map.path_length)
+        topo_path_vertex_num = np.array([len(now_path) for now_path in topo_map.foundPath])
+        #estimate path on grid map
+        distance_map = scipy.ndimage.distance_transform_edt(now_global_map == 0)
+        calculate_grid_path = grid_path(now_global_map_expand,distance_map,target_pose_list[-1], target_pose_list[0:-1])
+        calculate_grid_path.get_path()
+        grid_path_length = np.array(calculate_grid_path.path_length) * self.map_resolution #(y,x) format
+
+        
+        if len(grid_path_length) == 0:
+            print("-----------Failed to find a path in grid map---------")
+            return
+        if len(grid_path_length) != len(topopath_length):
+            print("-----------Failed to find some path in topomap optmize part!-------------")
+            return
+        #compare
+        #find topo_div_grid>1.5 and this path have shortest topo path
+        topo_div_grid = topopath_length/grid_path_length
+        tmp_grid_path = grid_path_length[(topo_div_grid > 1.5) & (topo_path_vertex_num > 4)  ]
+        if len(tmp_grid_path) == 0:
+            # dont find any shorter path
+            return
+        max_index = np.where(grid_path_length == min(tmp_grid_path))[0][0]
+        max_path = np.array(calculate_grid_path.foundPath[max_index])
+        max_path = np.fliplr(max_path)
+        created_path = np.array(self.create_an_edge_between_two_vertex(max_path,now_global_map )) #(x,y)format path, n*2,include start and end
+        created_path = created_path[1:-1]
+        #add this path into topo map
+        add_vertex_number = len(created_path)
+        if add_vertex_number!=0:
+            start_index = target_id_list[-1]
+            end_index = max_index
+            pose_in_map_frame = created_path*self.map_resolution + map_origin
+            for i in range(add_vertex_number):
+                now_pose = pose_in_map_frame[i]
+                now_pose_list = list(now_pose)
+                now_pose_list.append(0)
+                vertex = Support_Vertex(self.self_robot_name, id=-1, pose=now_pose_list)
+                self.last_vertex_id, self.current_node = self.map.add(vertex)
+                self.map.vertex[-1].local_free_space_rect  = find_local_max_rect(now_global_map, self.current_node.pose[0:2], map_origin, self.map_resolution)
+                #add edge
+                if i==0:
+                    #connect with begin
+                    link = [[self.self_robot_name, self.last_vertex_id], [self.self_robot_name, start_index]]
+                    self.map.edge.append(Edge(id=self.map.edge_id, link=link))
+                    self.map.edge_id += 1
+                else:
+                    link = [[self.self_robot_name, self.last_vertex_id], [self.self_robot_name, self.map.vertex[-2].id]]
+                    self.map.edge.append(Edge(id=self.map.edge_id, link=link))
+                    self.map.edge_id += 1
+
+                if i == add_vertex_number - 1:
+                    link = [[self.self_robot_name, self.last_vertex_id], [self.self_robot_name, end_index]]
+                    self.map.edge.append(Edge(id=self.map.edge_id, link=link))
+                    self.map.edge_id += 1
+
+    
+    def create_an_edge_between_two_vertex(self, path, global_map):
+        # 计算path中间点的下标
+        if len(path) <= 2:
+            return []
+        total_vertex = [path[0]]
+        total_length = len(path) 
+        start_index = 0
+        
+        while start_index < total_length - 1:
+            mid_index = total_length - 1 
+            while mid_index > start_index:
+                if self.free_space_line_map(path[start_index],path[mid_index],global_map):
+                    total_vertex.append(path[mid_index])
+                    start_index = mid_index
+                    break
+                else:
+                    mid_index = (mid_index - start_index)//2 + start_index
+        
+        return total_vertex
+
+
     def create_edge(self):
-        #create edge
+        #connect all edge with nearby vertex
+        if len(self.map.vertex) == 1:
+            return
         map_origin = np.array(self.map_origin)
         add_angle = []
+        create_edge_num = 0
         for  i in range(len(self.map.vertex) - 2, -1, -1):
             now_vertex = self.map.vertex[i]
             last_vertex_pose = np.array(now_vertex.pose[0:2])
@@ -493,11 +643,32 @@ class RobotNode:
                             near_add_edge_flag = True
                             break
                     if not near_add_edge_flag:
+                        create_edge_num +=1
                         add_angle.append(last_vertex_angle)
                         link = [[now_vertex.robot_name, now_vertex.id], [self.current_node.robot_name, self.current_node.id]]
                         self.map.edge.append(Edge(id=self.map.edge_id, link=link))
                         self.map.edge_id += 1
         
+        if create_edge_num == 0:
+            now_vertex = self.map.vertex[-2]
+            link = [[now_vertex.robot_name, now_vertex.id], [self.current_node.robot_name, self.current_node.id]]
+            self.map.edge.append(Edge(id=self.map.edge_id, link=link))
+            self.map.edge_id += 1
+                
+    def edge_to_adj_list(self):
+        for now_edge in self.map.edge:
+            first_id = now_edge.link[0][1]
+            last_id = now_edge.link[1][1]
+            pose1 = self.map.vertex[first_id].pose[0:2]
+            pose2 = self.map.vertex[last_id].pose[0:2]
+            if first_id not in self.adj_list.keys():
+                self.adj_list[first_id]  = []
+            if last_id not in self.adj_list.keys():
+                self.adj_list[last_id]  = []
+            
+            cost = ((pose1[0] - pose2[0])**2 + (pose1[1] - pose2[1])**2)**0.5
+            self.adj_list[first_id].append((last_id, cost))
+            self.adj_list[last_id].append((first_id, cost))
 
     def change_goal(self):
         # move goal:now_pos + basic_length+offset;  now_angle + nextmove
@@ -532,9 +703,10 @@ class RobotNode:
         #获取当前一个小范围的grid map
         self.grid_map = copy.deepcopy(self.global_map[max(self.current_loc_pixel[0]-range,0):min(self.current_loc_pixel[0]+range,shape[0]), max(self.current_loc_pixel[1]-range,0):min(self.current_loc_pixel[1]+range, shape[1])])
         try:
+            #detect frontier
             current_frontier = detect_frontier(self.global_map) * self.map_resolution + np.array(self.map_origin)
             self.total_frontier = np.vstack((self.total_frontier, current_frontier))
-            ds_size = 0.1
+            ds_size = 0.2
             tmp, unique_indices = np.unique(np.floor(self.total_frontier / ds_size).astype(int), True, axis=0)
             self.total_frontier = self.total_frontier[unique_indices]
         except:
@@ -636,7 +808,7 @@ class RobotNode:
         return False
 
     def update_frontier(self):
-        #负责一部分删除未探索方向
+        #负责一部分前沿点
         position = self.pose
         position = np.array([position[0], position[1]])
         #delete unexplored direction based on distance between now robot pose and frontier point position
@@ -869,6 +1041,27 @@ class RobotNode:
             self.map_frame_pose[self.meeted_robot[i]] = list()
             self.map_frame_pose[self.meeted_robot[i]].append(R.from_euler('z', now_meeted_robot_pose[2], degrees=True).as_matrix()) 
             self.map_frame_pose[self.meeted_robot[i]].append(np.array([now_meeted_robot_pose[0],now_meeted_robot_pose[1],0]))
+
+    def free_space_line_map(self,point1,point2,now_global_map):
+        # check whether a line cross a free space
+        # point1 and point2 in pixel frame
+        height, width = now_global_map.shape
+
+        x1, y1 = point1
+        x2, y2 = point2
+
+        distance = max(abs(x2 - x1), abs(y2 - y1))
+
+        step_x = (x2 - x1) / distance
+        step_y = (y2 - y1) / distance
+
+        for i in range(int(distance) + 1):
+            x = int(x1 + i * step_x)
+            y = int(y1 + i * step_y)
+            if x < 0 or x >= width or y < 0 or y >= height or now_global_map[y, x] != 0:
+                if now_global_map[y, x] != 255:#排除掉经过unknown的部分
+                    return False
+        return True
 
     def free_space_line(self,point1,point2):
         # check whether a line cross a free space

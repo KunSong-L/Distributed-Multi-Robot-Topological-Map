@@ -62,6 +62,7 @@ class Vertex:
         self.frontierDistance = []
         self.local_image = local_image
         self.descriptor_infor = 0
+        self.local_free_space_rect = [0,0,0,0]
         
         if descriptor is not None:
             self.descriptor_infor = calculate_entropy(descriptor)
@@ -71,6 +72,7 @@ class Support_Vertex:
         self.robot_name = robot_name
         self.id = id
         self.pose = pose
+        self.local_free_space_rect = [0,0,0,0]
 
 class Edge:
     

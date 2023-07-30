@@ -9,7 +9,6 @@ import csv
 path = "/home/master/debug/map_complete_data/"
 class MapPadding:
     def __init__(self, robot_name) -> None:
-        print(robot_name)
         self.self_robot_name = robot_name
         self.map_pub = rospy.Publisher(
             robot_name+"/map", OccupancyGrid, queue_size=10)
@@ -34,7 +33,7 @@ class MapPadding:
         map_message.header = map.header
         map_message.info = map.info
         # print("map orientation::", map.info.origin)
-        padding = 200
+        padding = 10
         shape = (map.info.height, map.info.width)
         mapdata = np.asarray(map.data).reshape(shape)
         if self.single_robot:
