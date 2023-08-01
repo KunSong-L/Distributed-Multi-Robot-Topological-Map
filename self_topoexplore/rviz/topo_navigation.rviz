@@ -213,7 +213,7 @@ Visualization Manager:
       Marker Topic: /robot1/visualization/marker
       Name: MarkerArray
       Namespaces:
-        {}
+        topological_map: true
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -221,7 +221,7 @@ Visualization Manager:
       Marker Topic: /robot1/visualization/edge
       Name: MarkerArray
       Namespaces:
-        {}
+        topological_map: true
       Queue Size: 100
       Value: true
     - Class: rviz/TF
@@ -291,7 +291,7 @@ Visualization Manager:
       Marker Topic: /robot1/frontier_points
       Name: Marker
       Namespaces:
-        {}
+        frontier_point: true
       Queue Size: 100
       Value: true
     - Alpha: 0.699999988079071
@@ -332,6 +332,14 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /robot1/vertex_free_space
+      Name: MarkerArray
+      Namespaces:
+        "": true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
@@ -360,7 +368,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 43.93587875366211
+      Distance: 38.66357421875
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -368,8 +376,8 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -1.5558350086212158
-        Y: 1.3338543176651
+        X: -1.5563242435455322
+        Y: 1.4627043008804321
         Z: -1.0445423126220703
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
@@ -378,7 +386,7 @@ Visualization Manager:
       Near Clip Distance: 0.009999999776482582
       Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
-      Yaw: 3.1453866958618164
+      Yaw: 3.1303863525390625
     Saved: ~
 Window Geometry:
   Displays:
@@ -396,5 +404,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 3952
-  X: 2304
-  Y: 188
+  X: 3984
+  Y: 54

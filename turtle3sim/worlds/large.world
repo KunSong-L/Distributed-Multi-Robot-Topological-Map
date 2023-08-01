@@ -3801,14 +3801,14 @@
         <kinematic>0</kinematic>
       </link>
     </model>
-    <model name='box_6_clone_clone_clone_0_clone_0_clone_2_clone_clone_0'>
+    <!--model name='box_6_clone_clone_clone_0_clone_0_clone_2_clone_clone_0'>
       <pose>-12.6684 9.96416 1.25 0 0 -1.91939</pose>
       <static>1</static>
       <link name='link'>
         <collision name='collision'>
           <geometry>
             <box>
-              <size>0.1 2.13425 2.5</size>
+              <size>0.1 2.5 2.5</size>
             </box>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -3842,7 +3842,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-    </model>
+    </model-->
     <model name='box_6_clone_clone_clone_0_clone_0_clone_2_clone_clone_clone'>
       <pose>-10.5404 11.4399 1.25 0 0 -1.13074</pose>
       <static>1</static>

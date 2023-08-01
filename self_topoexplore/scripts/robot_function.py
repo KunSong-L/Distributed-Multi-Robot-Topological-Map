@@ -7,8 +7,10 @@ import numpy as np
 import cv2
 import copy
 from scipy.spatial.distance import cdist
+from sklearn.cluster import DBSCAN
+from collections import Counter
 
-height_vertex = 0
+height_vertex = 0.5
 def set_marker(robot_name, id, pose, color=(0.5, 0, 0.5), action=Marker.ADD, scale = 0.3):
     now = rospy.Time.now()
     marker_message = Marker()
@@ -152,20 +154,19 @@ def calculate_entropy(array):
 
 def sparse_point_cloud(data,delta):
     # 对 xy 平面的前两列进行排序
-    sorted_indices = np.lexsort(data[:, :2].T)
+    data_num = len(data)
+    choose_index = np.ones(data_num,dtype=bool)
+    check_dick = dict()
+    for index, now_point in enumerate(data):
+        x = now_point[0]//delta
+        y = now_point[1]//delta
 
-    # 计算每个点的坐标变化
-    diffs = np.diff(data[sorted_indices, :2], axis=0)
-
-    # 找到变化大于等于 delta 的索引位置
-    keep_indices = np.where(np.sum(np.abs(diffs) >= delta, axis=1))[0]
-
-    # 添加最后一个点的索引位置
-    keep_indices = np.concatenate(([0], keep_indices + 1))
-
-    # 根据索引位置获取新的数组
-    result = data[sorted_indices[keep_indices]]
-    return result
+        if (x,y) not in check_dick.keys():
+            check_dick[(x,y)] = 1
+        else:
+            choose_index[index] = False
+    
+    return data[choose_index]
 
 def expand_obstacles(map_data, expand_distance=2):
     map_binary = (map_data == 100).astype(np.uint8)
@@ -253,3 +254,14 @@ def find_local_max_rect(image, seed_point, map_origin, map_reso):
     y1 = y1 * map_reso + map_origin[1]
     y2 = y2 * map_reso + map_origin[1]
     return [x1,y1,x2,y2]
+
+def calculate_vertex_info(frontiers, cluser_eps=1, cluster_min_samples=5):
+    # input: frontier; DBSCAN eps; DBSCAN min samples
+    # output: how many vertex in this cluster
+    dbscan = DBSCAN(eps=cluser_eps, min_samples=cluster_min_samples)
+    labels = dbscan.fit_predict(frontiers)
+    label_counts = Counter(labels)
+    label_counts[-1] = 0
+    vertex_infor = [label_counts[now_label] for now_label in labels]
+
+    return vertex_infor

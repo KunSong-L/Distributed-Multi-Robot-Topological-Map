@@ -171,6 +171,7 @@ class RobotNode:
         self.start_pub = rospy.Publisher(
             "/start_exp", String, queue_size=1) #发一个start
         self.pc_pub = rospy.Publisher(robot_name+'/point_cloud', PointCloud2, queue_size=10)
+        self.vertex_free_space_pub = rospy.Publisher(robot_name+'/vertex_free_space', MarkerArray, queue_size=1)
 
         self.frontier_publisher = rospy.Publisher(robot_name+'/frontier_points', Marker, queue_size=1)
         rospy.Subscriber(
@@ -339,6 +340,39 @@ class RobotNode:
         self.frontier_publisher.publish(frontier_marker)
         # --------------finish visualize frontier---------------
 
+        #可视化vertex free space
+        # 创建所有平面的Marker消息
+        markers = []
+
+        for index, now_vertex in enumerate(self.map.vertex):
+            if now_vertex.local_free_space_rect == [0,0,0,0]:
+                continue
+            x1,y1,x2,y2 = now_vertex.local_free_space_rect
+            marker = Marker()
+            marker.header.frame_id = robot_name + "/map"
+            marker.type = Marker.CUBE
+            marker.action = Marker.ADD
+            marker.pose.position.x = (x1 + x2)/2.0
+            marker.pose.position.y = (y1 + y2)/2.0
+            marker.pose.position.z = 0.0
+            marker.pose.orientation.x = 0.0
+            marker.pose.orientation.y = 0.0
+            marker.pose.orientation.z = 0.0
+            marker.pose.orientation.w = 1.0
+            marker.scale.x = abs(x2 - x1)
+            marker.scale.y = abs(y2 - y1)
+            marker.scale.z = 0.03 # 指定平面的厚度
+            marker.color.r = 0.0
+            marker.color.g = 1.0
+            marker.color.b = 0.0
+            marker.color.a = 0.2 # 指定平面的透明度
+            marker.id = index
+            markers.append(marker)
+        # 将所有Marker消息放入一个MarkerArray消息中，并发布它们
+        marker_array = MarkerArray()
+        marker_array.markers = markers
+        self.vertex_free_space_pub.publish(marker_array)
+        
         #可视化vertex
         marker_array = MarkerArray()
         marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL)
@@ -438,8 +472,6 @@ class RobotNode:
         panoramic_view = self.cv_bridge.imgmsg_to_cv2(panoramic, desired_encoding="rgb8")
         feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
         information = calculate_entropy(feature)
-        print(feature)
-        print("information = ", information)
         if not self.receive_topomap:
             return
 
@@ -461,7 +493,7 @@ class RobotNode:
         # print("best match ratio = ",best_match_rate)
 
         self.navigated_point = np.vstack((self.navigated_point, np.array([current_pose[0],current_pose[1],best_match_rate])))
-        self.navigated_point = sparse_point_cloud(self.navigated_point, 0.05)
+        self.navigated_point = sparse_point_cloud(self.navigated_point, 0.1)
         self.publish_point_cloud()
 
         if best_match_rate > 0.97:
