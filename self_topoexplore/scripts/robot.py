@@ -406,7 +406,8 @@ class RobotNode:
         #check whether create a main vertex
         uncertainty_value = 0
         
-        main_vertex_dens = 4 #main_vertex_dens^0.5 is the average distance of a vertex
+        main_vertex_dens = 16 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
+        global_vertex_dens = 2 # create a support vertex large than 2 meter
         now_pose = np.array(self.pose[0:2])
         for now_vertex in self.map.vertex:
             if isinstance(now_vertex, Support_Vertex):
@@ -430,6 +431,7 @@ class RobotNode:
         map_origin = np.array(self.map_origin)
         now_robot_pose = (now_pose - map_origin)/self.map_resolution
         free_line_flag = False
+        
         for last_vertex in self.map.vertex:
             last_vertex_pose = np.array(last_vertex.pose[0:2])
             last_vertex_pose_pixel = ( last_vertex_pose- map_origin)/self.map_resolution
@@ -441,8 +443,19 @@ class RobotNode:
             
             if free_line_flag:
                 break
+        
         if not free_line_flag:#if not a line in free space, create a support vertex
             return 2
+
+        min_dens_flag = False
+        for last_vertex in self.map.vertex:
+            last_vertex_pose = np.array(last_vertex.pose[0:2])
+            if np.linalg.norm(now_pose - last_vertex_pose) < global_vertex_dens:
+                min_dens_flag = True
+
+        if not min_dens_flag:#if robot in a place with not that much vertex, then create a support vertex
+            return 2
+        
         return 0
 
 
@@ -480,13 +493,15 @@ class RobotNode:
         if not self.finish_explore and len(self.total_frontier) == 0: 
             print("----------Robot Exploration Finished!-----------")
             self.map.vertex[-1].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[-1].pose[0:2], self.map_origin, self.map_resolution)
-            process = subprocess.Popen( "rosbag record -o /home/master/topomap.bag /robot1/topomap", shell=True) #change to your file path
+            self.visulize_vertex()
+            process = subprocess.Popen( "rosbag record -o /home/master/topomap.bag /robot1/topomap /robot1/map", shell=True) #change to your file path
             time.sleep(5)
             # 发送SIGINT信号给进程，让它结束记录
             os.kill(process.pid, signal.SIGINT)
             print("----------FHT-Map Record Finished!-----------")
             print("----------You can use this map for navigation now!-----------")
             self.finish_explore = True
+            
         
         if create_a_vertex_flag: # create a vertex
             if create_a_vertex_flag == 1:#create a main vertex
@@ -517,7 +532,7 @@ class RobotNode:
             if create_a_vertex_flag == 1:
                 refine_topo_map_msg = String()
                 refine_topo_map_msg.data = "Start_find_path!"
-                self.find_better_path_pub.publish(refine_topo_map_msg)
+                self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path
         
     
     def find_better_path_callback(self,data):

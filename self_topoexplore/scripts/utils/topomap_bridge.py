@@ -67,7 +67,7 @@ def MessageToTopomap(topomap_message):
             vertex.robot_name = topomap_message.support_vertex[support_vertex_index].robot_name
             vertex.id = topomap_message.support_vertex[support_vertex_index].id
             vertex.pose = topomap_message.support_vertex[support_vertex_index].pose
-            vertex.local_free_space_rect = topomap_message.vertex[support_vertex_index].local_free_space_rect
+            vertex.local_free_space_rect = topomap_message.support_vertex[support_vertex_index].local_free_space_rect
             Topomap.vertex.append(vertex)
             support_vertex_index+=1
 

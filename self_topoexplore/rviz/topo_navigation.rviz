@@ -28,7 +28,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: PointCloud2
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -249,6 +249,8 @@ Visualization Manager:
           Value: true
         robot1/map:
           Value: true
+        robot1/map_origin:
+          Value: true
         robot1/odom:
           Value: true
         robot1/wheel_left_link:
@@ -263,6 +265,8 @@ Visualization Manager:
       Show Names: true
       Tree:
         robot1/map:
+          robot1/map_origin:
+            {}
           robot1/odom:
             robot1/base_footprint:
               robot1/base_link:
@@ -287,13 +291,13 @@ Visualization Manager:
       Update Interval: 0
       Value: true
     - Class: rviz/Marker
-      Enabled: true
+      Enabled: false
       Marker Topic: /robot1/frontier_points
       Name: Marker
       Namespaces:
-        frontier_point: true
+        {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Alpha: 0.699999988079071
       Class: rviz/Map
       Color Scheme: map
@@ -368,7 +372,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 38.66357421875
+      Distance: 37.558082580566406
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -376,9 +380,9 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -1.5563242435455322
-        Y: 1.4627043008804321
-        Z: -1.0445423126220703
+        X: -4.775242328643799
+        Y: 0.9936494827270508
+        Z: -1.0477559566497803
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

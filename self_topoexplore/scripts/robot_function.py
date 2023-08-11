@@ -9,12 +9,14 @@ import copy
 from scipy.spatial.distance import cdist
 from sklearn.cluster import DBSCAN
 from collections import Counter
+from sklearn.neighbors import KDTree
+
 
 height_vertex = 0.5
-def set_marker(robot_name, id, pose, color=(0.5, 0, 0.5), action=Marker.ADD, scale = 0.3):
+def set_marker(robot_name, id, pose, color=(0.5, 0, 0.5), action=Marker.ADD, scale = 0.3,frame_name = "/map"):
     now = rospy.Time.now()
     marker_message = Marker()
-    marker_message.header.frame_id = robot_name + "/odom"
+    marker_message.header.frame_id = robot_name + frame_name
     marker_message.header.stamp = now
     marker_message.ns = "topological_map"
     marker_message.id = id
@@ -44,10 +46,10 @@ def set_marker(robot_name, id, pose, color=(0.5, 0, 0.5), action=Marker.ADD, sca
 
     return marker_message
 
-def set_edge(robot_name, id, poses, type="edge", color = (0,1,0), scale = 0.05):
+def set_edge(robot_name, id, poses, type="edge", color = (0,1,0), scale = 0.05, frame_name = "/map"):
     now = rospy.Time.now()
     path_message = Marker()
-    path_message.header.frame_id = robot_name + "/odom"
+    path_message.header.frame_id = robot_name + frame_name
     path_message.header.stamp = now
     path_message.ns = "topological_map"
     path_message.id = id
@@ -255,7 +257,7 @@ def find_local_max_rect(image, seed_point, map_origin, map_reso):
     y2 = y2 * map_reso + map_origin[1]
     return [x1,y1,x2,y2]
 
-def calculate_vertex_info(frontiers, cluser_eps=1, cluster_min_samples=5):
+def calculate_vertex_info(frontiers, cluser_eps=1, cluster_min_samples=7):
     # input: frontier; DBSCAN eps; DBSCAN min samples
     # output: how many vertex in this cluster
     dbscan = DBSCAN(eps=cluser_eps, min_samples=cluster_min_samples)
@@ -265,3 +267,49 @@ def calculate_vertex_info(frontiers, cluser_eps=1, cluster_min_samples=5):
     vertex_infor = [label_counts[now_label] for now_label in labels]
 
     return vertex_infor
+
+def outlier_rejection(input,dis_th = 0.5):
+    #input: a list of estimation
+    if len(input) < 4:
+        return input
+
+    estimated_center = []
+    for now_input in input:
+        R_map_i = R.from_euler('z', now_input[3][2], degrees=True).as_matrix()
+        t_map_i = np.array([now_input[3][0],now_input[3][1],0]).reshape(-1,1)
+        T_map_i = np.block([[R_map_i,t_map_i],[np.zeros((1,4))]])
+        T_map_i[-1,-1] = 1
+
+        R_nav_i1 = R.from_euler('z', now_input[2][2], degrees=True).as_matrix()
+        t_nav_i1 = np.array([now_input[2][0],now_input[2][1],0]).reshape(-1,1)
+        T_nav_i1 = np.block([[R_nav_i1,t_nav_i1],[np.zeros((1,4))]])
+        T_nav_i1[-1,-1] = 1
+
+        R_i1_i = R.from_euler('z', now_input[4][2], degrees=True).as_matrix()
+        t_i1_i = np.array([now_input[4][0],now_input[4][1],0]).reshape(-1,1)
+        T_i1_i = np.block([[R_i1_i,t_i1_i],[np.zeros((1,4))]])
+        T_i1_i[-1,-1] = 1
+
+        T_nav_map = T_nav_i1 @ T_i1_i @  np.linalg.inv(T_map_i) 
+        rot = R.from_matrix(T_nav_map[0:3,0:3]).as_euler('xyz',degrees=True)[2]
+        estimated_center.append([T_nav_map[0,-1], T_nav_map[1,-1], rot])
+
+    estimated_center = np.array(estimated_center)
+    estimated_center[:,2] /= 2
+    # 创建KD树
+    kdtree = KDTree(estimated_center)
+    # 选择K值
+    K = 2
+    maintan_ratio = 0.5
+    #至少保留百分之五十点
+    # 计算每个点的K近邻
+    distances, indices = kdtree.query(estimated_center, k=K)
+    nearest_dis = distances[:,1]
+    while len (np.where(nearest_dis<dis_th)[0] ) < maintan_ratio * len(input):
+        dis_th = dis_th*1.1
+    
+    good_index = np.where(nearest_dis<dis_th)[0]
+    new_input = [input[i] for i in good_index]
+    # print("origin number:",len(input), "  final number:", len(new_input))
+
+    return new_input
