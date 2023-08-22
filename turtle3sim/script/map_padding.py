@@ -76,9 +76,9 @@ class MapPadding:
         # ----get now pose----  
         #tracking map->base_footprint
         tmptimenow = rospy.Time.now()
-        self.tf_listener.waitForTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow, rospy.Duration(0.5))
         pose = [0,0]
         try:
+            self.tf_listener.waitForTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow, rospy.Duration(0.5))
             tf_transform, rotation = self.tf_listener.lookupTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow)
             pose[0] = tf_transform[0]
             pose[1] = tf_transform[1]

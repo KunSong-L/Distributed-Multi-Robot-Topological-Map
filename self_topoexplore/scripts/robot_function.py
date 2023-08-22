@@ -268,7 +268,7 @@ def calculate_vertex_info(frontiers, cluser_eps=1, cluster_min_samples=7):
 
     return vertex_infor
 
-def outlier_rejection(input,dis_th = 0.5):
+def outlier_rejection(input,dis_th = 0.2):
     #input: a list of estimation
     if len(input) < 4:
         return input
@@ -295,7 +295,7 @@ def outlier_rejection(input,dis_th = 0.5):
         estimated_center.append([T_nav_map[0,-1], T_nav_map[1,-1], rot])
 
     estimated_center = np.array(estimated_center)
-    estimated_center[:,2] /= 2
+    estimated_center[:,2] /= 4#对于角度贡献的误差降低一点
     # 创建KD树
     kdtree = KDTree(estimated_center)
     # 选择K值

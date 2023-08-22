@@ -1,7 +1,7 @@
 <launch>
 
   <arg name="model" default="burger"/>
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find self_topoexplore)/rviz/topo_navigation.rviz" />
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find self_topoexplore)/rviz/topo_reloca.rviz" />
 
 
   <node name="map_building" pkg="self_topoexplore" type="topo_relocalization.py" output="screen">
@@ -12,7 +12,8 @@
   </node>
 
   <node name="experiment" pkg="self_topoexplore" type="exp_reloca.py" output="screen">
-    <param name="robot_num" value="1"/>
+        <param name="robot_num" value="1"/>
+        <param name="reloca_method" value="main_only"/>
   </node>
 
 </launch>

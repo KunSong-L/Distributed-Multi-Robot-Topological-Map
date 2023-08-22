@@ -1,4 +1,5 @@
 #!/usr/bin/python3.8
+#没有路径优化部分，消融实验
 from tkinter.constants import Y
 import rospy
 from rospy.rostime import Duration
@@ -406,7 +407,7 @@ class RobotNode:
         #check whether create a main vertex
         uncertainty_value = 0
         
-        main_vertex_dens = 9 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
+        main_vertex_dens = 4 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
         global_vertex_dens = 2 # create a support vertex large than 2 meter
         now_pose = np.array(self.pose[0:2])
         for now_vertex in self.map.vertex:
@@ -529,10 +530,11 @@ class RobotNode:
             self.vertex_dict[self.self_robot_name].append(vertex.id)
             self.change_goal()
             
-            if create_a_vertex_flag ==1 or create_a_vertex_flag ==2: 
-                refine_topo_map_msg = String()
-                refine_topo_map_msg.data = "Start_find_path!"
-                self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path
+            #禁用优化部分
+            # if create_a_vertex_flag ==1 or create_a_vertex_flag ==2: 
+            #     refine_topo_map_msg = String()
+            #     refine_topo_map_msg.data = "Start_find_path!"
+            #     self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path
         
     
     def find_better_path_callback(self,data):
@@ -671,7 +673,7 @@ class RobotNode:
                         link = [[now_vertex.robot_name, now_vertex.id], [self.current_node.robot_name, self.current_node.id]]
                         self.map.edge.append(Edge(id=self.map.edge_id, link=link))
                         self.map.edge_id += 1
-        #可能会存在bug
+        
         if create_edge_num == 0:
             now_vertex = self.map.vertex[-2]
             link = [[now_vertex.robot_name, now_vertex.id], [self.current_node.robot_name, self.current_node.id]]

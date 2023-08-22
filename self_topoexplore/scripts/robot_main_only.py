@@ -1,4 +1,5 @@
 #!/usr/bin/python3.8
+#仅有主节点的方法，消融实验
 from tkinter.constants import Y
 import rospy
 from rospy.rostime import Duration
@@ -439,22 +440,27 @@ class RobotNode:
                 # free_line_flag = self.free_space_line(last_vertex_pose_pixel, now_robot_pose)
                 free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, 1)
             else:   
-                free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, 5)
+                free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, 3)
             
             if free_line_flag:
                 break
         
         if not free_line_flag:#if not a line in free space, create a support vertex
-            return 2
+            self.potential_main_vertex = list()
+            self.now_feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
+            gray_local_img = cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY)
+            vertex = Vertex(robot_name, id=-1, pose=self.pose, descriptor=self.now_feature, local_image=gray_local_img, local_laserscan_angle=self.local_laserscan_angle)
+            self.potential_main_vertex.append(vertex) 
+            return 1
 
-        min_dens_flag = False
-        for last_vertex in self.map.vertex:
-            last_vertex_pose = np.array(last_vertex.pose[0:2])
-            if np.linalg.norm(now_pose - last_vertex_pose) < global_vertex_dens:
-                min_dens_flag = True
+        # min_dens_flag = False
+        # for last_vertex in self.map.vertex:
+        #     last_vertex_pose = np.array(last_vertex.pose[0:2])
+        #     if np.linalg.norm(now_pose - last_vertex_pose) < global_vertex_dens:
+        #         min_dens_flag = True
 
-        if not min_dens_flag:#if robot in a place with not that much vertex, then create a support vertex
-            return 3
+        # if not min_dens_flag:#if robot in a place with not that much vertex, then create a support vertex
+        #     return 3
         
         return 0
 
@@ -501,8 +507,7 @@ class RobotNode:
             print("----------FHT-Map Record Finished!-----------")
             print("----------You can use this map for navigation now!-----------")
             self.finish_explore = True
-            
-        
+
         if create_a_vertex_flag: # create a vertex
             if create_a_vertex_flag == 1:#create a main vertex
                 max_infor_index = 0
@@ -529,10 +534,11 @@ class RobotNode:
             self.vertex_dict[self.self_robot_name].append(vertex.id)
             self.change_goal()
             
-            if create_a_vertex_flag ==1 or create_a_vertex_flag ==2: 
-                refine_topo_map_msg = String()
-                refine_topo_map_msg.data = "Start_find_path!"
-                self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path
+            #禁用优化部分
+            # if create_a_vertex_flag ==1 or create_a_vertex_flag ==2: 
+            #     refine_topo_map_msg = String()
+            #     refine_topo_map_msg.data = "Start_find_path!"
+            #     self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path
         
     
     def find_better_path_callback(self,data):
@@ -651,7 +657,7 @@ class RobotNode:
             now_vertex = self.map.vertex[i]
             last_vertex_pose = np.array(now_vertex.pose[0:2])
             now_vertex_pose = np.array(self.current_node.pose[0:2])
-            if np.linalg.norm(last_vertex_pose - now_vertex_pose) < 8: # not too far away vertex
+            if np.linalg.norm(last_vertex_pose - now_vertex_pose) < 20: # not too far away vertex; 
                 last_vertex_pose_pixel = ( last_vertex_pose- map_origin)/self.map_resolution
                 now_vertex_pose_pixel = (now_vertex_pose - map_origin)/self.map_resolution
                 if self.free_space_line(last_vertex_pose_pixel, now_vertex_pose_pixel):
@@ -671,7 +677,7 @@ class RobotNode:
                         link = [[now_vertex.robot_name, now_vertex.id], [self.current_node.robot_name, self.current_node.id]]
                         self.map.edge.append(Edge(id=self.map.edge_id, link=link))
                         self.map.edge_id += 1
-        #可能会存在bug
+        
         if create_edge_num == 0:
             now_vertex = self.map.vertex[-2]
             link = [[now_vertex.robot_name, now_vertex.id], [self.current_node.robot_name, self.current_node.id]]

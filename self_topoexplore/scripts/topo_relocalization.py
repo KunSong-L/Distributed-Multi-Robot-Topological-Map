@@ -649,9 +649,10 @@ class RobotNode:
         self.global_map_info = data.info
         shape = (data.info.height, data.info.width)
         timenow = rospy.Time.now()
-        #robot1/map->robot1/base_footprint
-        self.tf_listener.waitForTransform(data.header.frame_id, robot_name+"/base_footprint", timenow, rospy.Duration(0.5))
+        
         try:
+            #robot1/map->robot1/base_footprint
+            self.tf_listener.waitForTransform(data.header.frame_id, robot_name+"/base_footprint", timenow, rospy.Duration(0.5))
             tf_transform, rotation = self.tf_listener.lookupTransform(data.header.frame_id, robot_name+"/base_footprint", timenow)
             self.current_loc_pixel = [0,0]
             #data origin position = -13, -12, 0
@@ -829,7 +830,7 @@ class RobotNode:
 
 if __name__ == '__main__':
     time.sleep(3)
-    rospy.init_node('topo_navigation')
+    rospy.init_node('topo_relocalization')
     robot_name = rospy.get_param("~robot_name")
     robot_num = rospy.get_param("~robot_num")
     print(robot_name, robot_num)
@@ -841,7 +842,7 @@ if __name__ == '__main__':
     robot_list.remove(robot_name) #记录其他机器人id
     node = RobotNode(robot_name, robot_list)
 
-    print("-------init robot navigation node--------")
+    print("-------init robot relocalization node--------")
     #订阅自己的图像
     robot1_image1_sub = message_filters.Subscriber(robot_name+"/camera1/image_raw", Image)
     robot1_image2_sub = message_filters.Subscriber(robot_name+"/camera2/image_raw", Image)

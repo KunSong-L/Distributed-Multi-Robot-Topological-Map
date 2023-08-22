@@ -50,11 +50,12 @@
   <gazebo>
     <plugin name="turtlebot3_burger_controller" filename="libgazebo_ros_diff_drive.so">
       <commandTopic>cmd_vel</commandTopic>
-      <odometryTopic>odom1</odometryTopic>
-      <odometryFrame>odom_gazebo</odometryFrame>
+      <odometryTopic>odom</odometryTopic>
+      <odometryFrame>odom</odometryFrame>
+      <!--world or encoder-->
       <odometrySource>world</odometrySource>
       <!--dont use odom published by gazebo-->
-      <publishOdomTF>false</publishOdomTF>
+      <publishOdomTF>true</publishOdomTF>
       <robotBaseFrame>base_footprint</robotBaseFrame>
       <publishWheelTF>false</publishWheelTF>
       <publishTf>true</publishTf>

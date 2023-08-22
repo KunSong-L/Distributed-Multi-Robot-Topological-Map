@@ -1,0 +1,20 @@
+<launch>
+  <!-- 引入其他的launch文件 -->
+  <include file="$(find turtlebot3sim)/launch/simulation_environment/academy_env_single_robot.launch" />
+  <include file="$(find turtlebot3sim)/launch/robots_slam/single_robot_origin.launch" />
+  
+  <arg name="model" default="burger"/>
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find self_topoexplore)/rviz/topo_navigation.rviz" />
+
+
+  <node name="map_building" pkg="self_topoexplore" type="topo_relocalization.py" output="screen">
+    <param name="network" value="retrievalSfM120k-vgg16-gem" />
+    <param name="platform" value="cuda" />
+    <param name="robot_name" value="robot1"/>
+    <param name="robot_num" value="1"/>
+  </node>
+
+  <include file="$(find self_topoexplore)/launch/amcl_eval/amcl_museum.launch" />
+
+  <node pkg="rosservice" type="rosservice" name="global_localization" args="call /global_localization" />
+</launch>

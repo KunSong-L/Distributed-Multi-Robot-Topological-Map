@@ -62,7 +62,7 @@ class Vertex:
         self.frontierDistance = []
         self.local_image = local_image
         self.descriptor_infor = 0
-        self.local_free_space_rect = [0,0,0,0]
+        self.local_free_space_rect = [0,0,0,0] #x1,y1,x2,y2 in map frame  ; x1< x2,y1 <y2
         
         if descriptor is not None:
             self.descriptor_infor = calculate_entropy(descriptor)
