@@ -49,6 +49,7 @@ import tf2_ros
 import subprocess
 from ransac_icp import *
 import open3d as o3d
+import rosbag
 
 debug_path = "/home/master/debug/test1/"
 save_result = False
@@ -152,7 +153,9 @@ class RobotNode:
         self.trajectory_length = 0
         self.start_time = time.time()
         self.total_frontier = np.array([],dtype=float).reshape(-1,2)
-
+        #初始化拓扑地图
+        self.init_topomap()
+        
         #publisher and subscriber
         self.marker_pub = rospy.Publisher(
             robot_name+"/visualization/marker", MarkerArray, queue_size=1)
@@ -178,8 +181,7 @@ class RobotNode:
             robot_name+"/panoramic", Image, self.map_panoramic_callback, queue_size=1)
         rospy.Subscriber(
             robot_name+"/map", OccupancyGrid, self.map_grid_callback, queue_size=1)
-        rospy.Subscriber(
-            robot_name+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1, buff_size=52428800)
+        
         rospy.Subscriber(
             robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
         rospy.Subscriber(
@@ -420,7 +422,7 @@ class RobotNode:
         frontier_poses = self.total_frontier  
 
         dis_frontier_poses = np.sqrt(np.sum(np.square(frontier_poses - self.pose[0:2]), axis=1))
-        dis_tmp = np.exp(-(dis_frontier_poses-1)**2 / 8)
+        dis_tmp = np.exp(-(dis_frontier_poses - 5.6)**2 / 8)
 
         angle_frontier_poses = np.arctan2(frontier_poses[:, 1] - self.pose[1], frontier_poses[:, 0] - self.pose[0]) - self.pose[2] / 180 * np.pi
         angle_tmp = np.exp(-angle_frontier_poses**2 / 1)
@@ -499,40 +501,16 @@ class RobotNode:
         self.navigated_point = sparse_point_cloud(self.navigated_point, 0.1)
         self.publish_point_cloud()
 
-        if best_match_rate > 0.97:
-            now_laser = self.local_laserscan_angle
-            vertex_laser = self.received_map.vertex[best_match_index].local_laserscan_angle
-            #do ICP to recover the relative pose
-            now_laser_xy = self.angle_laser_to_xy(now_laser)
-            vertex_laser_xy = self.angle_laser_to_xy(vertex_laser)
-
-            pc1 = np.vstack((now_laser_xy, np.zeros(now_laser_xy.shape[1])))
-            pc2 = np.vstack((vertex_laser_xy, np.zeros(vertex_laser_xy.shape[1])))
-
-            processed_source = o3d.geometry.PointCloud()
-            pc2_offset = copy.deepcopy(pc2)
-            pc2_offset[2,:] -= 0.1
-            processed_source.points = o3d.utility.Vector3dVector(np.vstack([pc2.T,pc2_offset.T]))
-
-            processed_target = o3d.geometry.PointCloud()
-            pc1_offset = copy.deepcopy(pc1)
-            pc1_offset[2,:] -= 0.1
-            processed_target.points = o3d.utility.Vector3dVector(np.vstack([pc1.T,pc1_offset.T]))
-
-            final_R, final_t = ransac_icp(processed_source, processed_target, None, vis=0)
-
-            if final_R is None or final_t is None:
-                return
-            else:
-                estimated_pose = [final_t[0][0],final_t[1][0], math.atan2(final_R[1,0],final_R[0,0])/math.pi*180]
-                if best_match_index not in self.matched_vertex:
-                    self.matched_vertex.append(best_match_index) 
-                    # pose optimize
-                    self.estimated_vertex_pose.append([self.self_robot_name, "robot2",current_pose,list(self.received_map.vertex[best_match_index].pose),estimated_pose])
-                    self.topo_optimize()
-                    # self.update_vertex_pose()
-                    self.update_relative_pose()
-                    self.init_map_pose = True
+        if best_match_rate > 0.98:
+            estimated_pose = [0,0, 0]
+            if best_match_index not in self.matched_vertex:
+                self.matched_vertex.append(best_match_index) 
+                # pose optimize
+                self.estimated_vertex_pose.append([self.self_robot_name, "robot2",current_pose,list(self.received_map.vertex[best_match_index].pose),estimated_pose])
+                self.topo_optimize()
+                # self.update_vertex_pose()
+                self.update_relative_pose()
+                self.init_map_pose = True
    
 
     def change_goal(self):
@@ -543,76 +521,12 @@ class RobotNode:
         self.actoinclient.send_goal(goal_message)
         self.goal_pub.publish(goal_marker)
 
-    # def topo_optimize(self):
-    #     #self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.pose,vertex.pose,pose])
-    #     # This part should update self.map_frame_pose[vertex.robot_name];self.map_frame_pose[vertex.robot_name][0] R33;[1]t 31
-    #     input = self.estimated_vertex_pose
-    #     now_meeted_robot_num = len(self.meeted_robot)
-    #     name_list = [self.self_robot_name] + self.meeted_robot
-    #     c_real = [[0,0,0] for i in range(now_meeted_robot_num + 1)]
-
-    #     now_id = 1
-    #     trans_data = ""
-    #     outlier_rejected_input = outlier_rejection(input)
-    #     for center in c_real:
-    #         trans_data+="VERTEX_SE2 {} {:.6f} {:.6f} {:.6f}\n".format(now_id,center[0],center[1],center[2]/180*math.pi)
-    #         now_id +=1
-
-    #     for now_input in outlier_rejected_input:
-    #         # pose_origin1 = numpy.append(pose_origin1, numpy.array([[now_input[2][0]],[now_input[2][1]]]), axis=1)
-    #         # pose_origin2 = numpy.append(pose_origin2, numpy.array([[now_input[3][0]],[now_input[3][1]]]), axis=1)
-    #         now_trust = 1
-    #         start_idx = str(name_list.index(now_input[0])+1)
-    #         end_idx = str(name_list.index(now_input[1])+1)
-    #         trans_data+="EDGE_SE2 {} {} ".format(start_idx,end_idx)
-    #         for j in range(3):
-    #             for k in range(3):
-    #                 trans_data += " {:.6f} ".format(now_input[2+j][k])
-    #         trans_data += " {:.6f} 0 0 {:.6f} 0 {:.6f}\n".format(now_trust,now_trust,now_trust)
-    #         now_id += 2
-
-    #     current_dir = os.path.dirname(os.path.abspath(__file__))
-    #     # 构建可执行文件的相对路径
-    #     executable_path = os.path.join(current_dir, '..', 'src', 'pose_graph_opt', 'pose_graph_2d')
-    #     process = subprocess.Popen(executable_path, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-    #     # 向C++程序输入数据
-    #     process.stdin.write(trans_data)
-    #     # 关闭输入流
-    #     process.stdin.close()
-    #     output_data = process.stdout.read()
-    #     # 等待C++程序退出
-    #     process.wait()
-
-    #     output_data = output_data[:-1]
-
-    #     rows = output_data.split('\n')
-    #     # 将每行分割成字符串数组
-    #     data_list = [row.split() for row in rows]
-    #     # 将字符串数组转换为浮点数数组
-    #     data_arr = np.array(data_list, dtype=float)
-    #     poses_optimized = data_arr[:,1:]
-    #     poses_optimized[:,-1] = poses_optimized[:,-1] / math.pi *180#转换到角度制度
-    #     # print("estimated pose is:\n", poses_optimized)
-    #     # if self.self_robot_name == "robot1":
-    #     #     poses_optimized = np.array([[0,0,0],[7,7,0]])
-    #     # else:
-    #     #     poses_optimized = np.array([[0,0,0],[-7,-7,0]])
-    #     for i in range(0,now_meeted_robot_num):
-    #         now_meeted_robot_pose = poses_optimized[1+i,:]
-    #         print("---------------Robot Center Optimized-----------------------\n")
-    #         print(self.self_robot_name,"estimated robot pose of (x ,y, Yaw in degree)", self.meeted_robot[i],now_meeted_robot_pose)
-    #         self.map_frame_pose[self.meeted_robot[i]] = list()
-    #         self.map_frame_pose[self.meeted_robot[i]].append(R.from_euler('z', now_meeted_robot_pose[2], degrees=True).as_matrix()) 
-    #         self.map_frame_pose[self.meeted_robot[i]].append(np.array([now_meeted_robot_pose[0],now_meeted_robot_pose[1],0]))
-    
     def topo_optimize(self):
         #self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,svertex.pose,vertex.pose,pose])
         # This part should update self.map_frame_pose[vertex.robot_name];self.map_frame_pose[vertex.robot_name][0] R33;[1]t 31
-        
         input = self.estimated_vertex_pose
-        outlier_rejected_input = outlier_rejection(input)
         now_meeted_robot_num = len(self.meeted_robot) #只做单个机器人这部分
-        now_meeted_robot_pose = pose_gragh_opt(outlier_rejected_input,0.2)
+        now_meeted_robot_pose = pose_gragh_opt(input)
         for i in range(0,now_meeted_robot_num):
             print("---------------Robot Center Optimized-----------------------\n")
             print(self.self_robot_name,"estimated robot pose of (x ,y, Yaw in degree)", self.meeted_robot[i],now_meeted_robot_pose)
@@ -759,12 +673,34 @@ class RobotNode:
         return goal_marker
 
         
-    def topomap_callback(self, topomap_message):
+    def init_topomap(self):
         # receive topomap
-        if self.receive_topomap:
-            return
-        self.ready_for_topo_map = False
-        Topomap = MessageToTopomap(topomap_message)
+        bag_path = "/home/master/topomap_data/fht_grid_rosbag/museum/topoexplore/topomap_2023-08-22-15-09-06.bag"
+        Topomap = TopologicalMap()
+        bag = rosbag.Bag(bag_path)
+
+        topic_data_size = {}
+        topic_data_number = {}
+        for topic, msg, t in bag.read_messages():
+            if topic not in topic_data_size:
+                topic_data_size[topic] = 0
+                topic_data_number[topic] = 0
+            if topic == "/robot1/topomap":
+                for i in range(len(msg.vertex)):
+                    now_vertex = msg.vertex[i]
+                    vertex = Vertex()
+                    vertex.robot_name = now_vertex.robot_name
+                    vertex.id = now_vertex.id
+                    vertex.pose = [now_vertex.pose.pose.position.y-8, 7-now_vertex.pose.pose.position.x, 0]
+                    vertex.descriptor = np.asarray(now_vertex.descriptor)
+                    vertex.descriptor_infor = calculate_entropy(vertex.descriptor)
+                    Topomap.vertex.append(vertex)
+                for i in range(len(msg.edge)):
+                    now_edge = msg.edge[i]
+                    link = [[now_edge.robot_name1, now_edge.id1], [now_edge.robot_name2, now_edge.id2]]
+                    edge = Edge(now_edge.id, link)
+                    Topomap.edge.append(edge)        
+
         self.map = copy.deepcopy(Topomap)  
         self.received_map = copy.deepcopy(Topomap)  
 

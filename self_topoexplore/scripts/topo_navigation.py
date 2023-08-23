@@ -132,6 +132,21 @@ class RobotNode:
         self.navigated_point = np.array([],dtype=float).reshape((-1,3))
         self.tf_broadcaster = tf2_ros.TransformBroadcaster()
         #navigation
+        #获取相对位姿，直接完成重定位
+        self.robot_origin = [rospy.get_param("~origin_x"), rospy.get_param("~origin_y"), rospy.get_param("~origin_yaw")]
+        for i in range(3):
+            self.robot_origin[i] = float(self.robot_origin[i])
+        #计算理论值
+        gt_vector = np.array([7-self.robot_origin[0], 8 - self.robot_origin[1]])
+        theta = self.robot_origin[2]
+        gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
+        rot = 90 - np.rad2deg(theta)
+
+        self.map2_map1 = [gt_2[0],gt_2[1],np.deg2rad(rot)]#原始map在新map坐标系下位置
+        self.map1_map2 = change_frame([0,0,0], self.map2_map1)        
+
+        self.world_map1 = [7,8,1.57]
+        self.world_map2 = [rospy.get_param("~origin_x"), rospy.get_param("~origin_y"), rospy.get_param("~origin_yaw")]
         #获取目标点
         self.nav_target = [rospy.get_param("~target_x"), rospy.get_param("~target_y"), rospy.get_param("~target_yaw")]
         for i in range(3):
@@ -141,6 +156,7 @@ class RobotNode:
         self.now_target_vertex = 0 #目前机器人所需要去的下标
         self.target_on_freespace = False
         self.target_map_frame = [0,0,0]
+
         # get tf
         self.tf_listener = tf.TransformListener()
         self.tf_listener2 = tf.TransformListener()
@@ -163,6 +179,8 @@ class RobotNode:
         self.trajectory_length = 0
         self.start_time = time.time()
         self.total_frontier = np.array([],dtype=float).reshape(-1,2)
+
+        
 
         #publisher and subscriber
         self.marker_pub = rospy.Publisher(
@@ -328,6 +346,7 @@ class RobotNode:
 
     def visulize_vertex(self):
         # ----------visualize frontier------------
+        
         frontier_marker = Marker()
         now = rospy.Time.now()
         frontier_marker.header.frame_id = robot_name + "/map"
@@ -354,13 +373,12 @@ class RobotNode:
         #可视化vertex free space
         # 创建所有平面的Marker消息
         markers = []
-
         for index, now_vertex in enumerate(self.map.vertex):
             if now_vertex.local_free_space_rect == [0,0,0,0]:
                 continue
             x1,y1,x2,y2 = now_vertex.local_free_space_rect
             marker = Marker()
-            marker.header.frame_id = robot_name + "/map"
+            marker.header.frame_id = robot_name + "/map_origin"
             marker.type = Marker.CUBE
             marker.action = Marker.ADD
             marker.pose.position.x = (x1 + x2)/2.0
@@ -386,7 +404,7 @@ class RobotNode:
         
         #可视化vertex
         marker_array = MarkerArray()
-        marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL)
+        marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL,frame_name = "/map_origin")
         marker_array.markers.append(marker_message)
         self.marker_pub.publish(marker_array) #DELETEALL 操作，防止重影
         marker_array = MarkerArray()
@@ -399,9 +417,9 @@ class RobotNode:
                 marker_message = set_marker(robot_name, markerid, vertex.pose)#other color
             else:
                 if isinstance(vertex, Vertex):
-                    marker_message = set_marker(robot_name, markerid, vertex.pose, color=main_vertex_color, scale=0.3)
+                    marker_message = set_marker(robot_name, markerid, vertex.pose, color=main_vertex_color, scale=0.3,frame_name = "/map_origin")
                 else:
-                    marker_message = set_marker(robot_name, markerid, vertex.pose, color=support_vertex_color, scale=0.25)
+                    marker_message = set_marker(robot_name, markerid, vertex.pose, color=support_vertex_color, scale=0.25,frame_name = "/map_origin")
             marker_array.markers.append(marker_message)
             markerid += 1
         
@@ -418,7 +436,7 @@ class RobotNode:
                     poses.append(vertex.pose)
                     num_count += 1
                 if num_count == 2:
-                    edge_message = set_edge(robot_name, edge.id, poses, "edge",main_edge_color, scale=0.1)
+                    edge_message = set_edge(robot_name, edge.id, poses, "edge",main_edge_color, scale=0.1,frame_name = "/map_origin")
                     edge_array.markers.append(edge_message)
                     break
         self.marker_pub.publish(marker_array)
@@ -476,20 +494,23 @@ class RobotNode:
     def update_relative_pose(self):
         # 定义转换关系的消息
 
+        relative_pose= self.map2_map1
+        orientation = R.from_euler('z', relative_pose[2], degrees=False).as_quat()
+
         transform = TransformStamped()
         transform.header.frame_id = self.self_robot_name + '/map'  # 源坐标系
         transform.child_frame_id = self.self_robot_name + '/map_origin'  # 目标坐标系
         
         # 设置转换关系的平移部分
-        transform.transform.translation.x = 0 # 在X轴上的平移量
-        transform.transform.translation.y = 0 # 在Y轴上的平移量
+        transform.transform.translation.x = relative_pose[0] # 在X轴上的平移量
+        transform.transform.translation.y = relative_pose[1] # 在Y轴上的平移量
         transform.transform.translation.z = 0.0  # 在Z轴上的平移量
         
         # 设置转换关系的旋转部分（四元数表示）
-        transform.transform.rotation.x = 0
-        transform.transform.rotation.y = 0
-        transform.transform.rotation.z = 0
-        transform.transform.rotation.w = 1
+        transform.transform.rotation.x = orientation[0]
+        transform.transform.rotation.y = orientation[1]
+        transform.transform.rotation.z = orientation[2]
+        transform.transform.rotation.w = orientation[3]
         transform.header.stamp = rospy.Time.now()
         self.tf_broadcaster.sendTransform(transform)
 
@@ -514,21 +535,47 @@ class RobotNode:
         start_msg.data = "Start!"
         self.start_pub.publish(start_msg)
         self.update_robot_pose() #update robot pose
+        self.update_relative_pose()
         if not self.receive_topomap:
             return
         
         if not self.update_navigation_path_flag:
             #如果收到拓扑地图开始导航
             print("-----------Start Nav-------------")
-            self.update_relative_pose()
+            
             self.vertex_map_ready = True
 
             #start navigation
             #target original in wrold frame, so change into map frame
-            nav_target_x = self.nav_target[1] - 8
-            nav_target_y = 7 - self.nav_target[0]
-            self.target_map_frame = [nav_target_x,nav_target_y,0]
+            self.map2_target = change_frame(self.nav_target, self.world_map2) #目标在当前地图坐标系中位置
+            self.map1_target = change_frame(self.nav_target, self.world_map1) #目标在原始地图坐标系中位置
+            self.map1_start = change_frame(self.world_map2, self.world_map1) #开始点在原始map1中位置
+            #判断初始点是否在free space
+            start_x = self.map1_start[0]
+            start_y = self.map1_start[1]
+            start_in_vertex_index = -1
+            for i in range(len(self.map.vertex)):
+                now_free_space = self.map.vertex[i].local_free_space_rect
+                if now_free_space[0] < start_x and start_x < now_free_space[2] and now_free_space[1] < start_y and start_y < now_free_space[3]:
+                    start_in_vertex_index = i
+                    break
+            self.start_on_freespace = True
+            if start_in_vertex_index == -1:
+                #对于目标点不在free space 情况，找一个最近的vertex导航过去
+                self.target_on_freespace = False
+                min_dis = 1e100
+                min_index = -1
+                for i in range(len(self.map.vertex)):
+                    now_vertex_pose = self.map.vertex[i].pose[0:2]
+                    now_dis = ((start_x - now_vertex_pose[0])**2 + (start_y - now_vertex_pose[1])**2)**0.5
+                    if now_dis < min_dis:
+                        min_dis = now_dis
+                        min_index = i
+                start_in_vertex_index = min_index
+
             #check whether target in free space 
+            nav_target_x = self.map1_target[0]
+            nav_target_y = self.map1_target[1]
             target_in_vertex_index = -1
             for i in range(len(self.map.vertex)):
                 now_free_space = self.map.vertex[i].local_free_space_rect
@@ -536,7 +583,6 @@ class RobotNode:
                     target_in_vertex_index = i
                     break
             self.target_on_freespace = True
-
             if target_in_vertex_index == -1:
                 #对于目标点不在free space 情况，找一个最近的vertex导航过去
                 self.target_on_freespace = False
@@ -553,7 +599,7 @@ class RobotNode:
             self.adj_list = dict()
             self.edge_to_adj_list()
             #get total id and pose
-            target_id_list = [0,target_in_vertex_index]
+            target_id_list = [start_in_vertex_index,target_in_vertex_index]
             #estimate path on topomap
             topo_map = topo_map_path(self.adj_list,target_id_list[-1], target_id_list[0:-1])
             topo_map.get_path()
@@ -566,17 +612,17 @@ class RobotNode:
             robot_pose = np.array(self.pose[0:2])
             now_vertex_id = self.target_topo_path[self.now_target_vertex]
             target_vertex_pose = np.array(self.map.vertex[now_vertex_id].pose[0:2])
+            target_vertex_pose = change_frame(target_vertex_pose, self.map1_map2) # 换到map2
             target_dis = np.linalg.norm(robot_pose - target_vertex_pose)
 
             if self.now_target_vertex == -1:#目标是最后一个点
                 #判断是否到达最后一个点
-                final_target = np.array(self.target_map_frame[0:2])
+                final_target = np.array(self.map2_target[0:2])
                 if np.linalg.norm(robot_pose - final_target) < 0.1:#到达最后一个点了
-                    print("Robot Finish Navigation !")
                     return
             else:
                 map_origin = np.array(self.map_origin)
-                target_pose = np.array(self.target_map_frame[0:2])
+                target_pose = np.array(self.map2_target[0:2])
 
                 target_vertex_pose_pixel = (target_pose- map_origin)/self.map_resolution
                 height, width = self.global_map.shape
@@ -584,8 +630,10 @@ class RobotNode:
                 y = int(target_vertex_pose_pixel[1])
                 if x > 0 and x <= width and y > 0 and y <= height and self.global_map[y,x] == 0:
                     self.now_target_vertex = -1#如果终点可见，直接去终点
-                    goal_message, self.goal = self.get_move_goal(self.self_robot_name,self.target_map_frame )#offset = 0
-                    goal_marker = self.get_goal_marker(self.self_robot_name, self.target_map_frame)
+                    final_target = copy.deepcopy(self.map2_target)
+                    final_target[2] = np.rad2deg(final_target[2])
+                    goal_message, self.goal = self.get_move_goal(self.self_robot_name,final_target )#offset = 0
+                    goal_marker = self.get_goal_marker(self.self_robot_name, final_target)
                     self.actoinclient.send_goal(goal_message)
                     self.goal_pub.publish(goal_marker)
                 else:
@@ -593,6 +641,7 @@ class RobotNode:
                     for i in range(len(self.target_topo_path)-1,self.now_target_vertex,-1):#逆序索引
                         now_point_index = self.target_topo_path[i]
                         target_pose = np.array(self.map.vertex[now_point_index].pose[0:2])
+                        target_pose = change_frame(target_pose, self.map1_map2) # 换到map2
                         target_vertex_pose_pixel = (target_pose- map_origin)/self.map_resolution
                         x = int(target_vertex_pose_pixel[0])
                         y = int(target_vertex_pose_pixel[1])
@@ -606,17 +655,32 @@ class RobotNode:
                         if target_dis < 0.5:
                             if self.now_target_vertex == len(self.target_topo_path) - 1: #如果到了最后一个点，那么直接去目标点
                                 self.now_target_vertex = -1
-                                goal_message, self.goal = self.get_move_goal(self.self_robot_name,self.target_map_frame )#offset = 0
-                                goal_marker = self.get_goal_marker(self.self_robot_name, self.target_map_frame)
+                                final_target = copy.deepcopy(self.map2_target)
+                                final_target[2] = np.rad2deg(final_target[2])
+                                goal_message, self.goal = self.get_move_goal(self.self_robot_name,final_target )#offset = 0
+                                goal_marker = self.get_goal_marker(self.self_robot_name, final_target)
                                 self.actoinclient.send_goal(goal_message)
                                 self.goal_pub.publish(goal_marker)
                                 return
                             else:
                                 self.now_target_vertex += 1
                                 find_new_target = True
+                        if self.now_target_vertex==0:
+                            self.now_target_vertex += 1
+                            now_vertex_id = self.target_topo_path[self.now_target_vertex]
+                            now_vertex_pose = self.map.vertex[now_vertex_id].pose
+                            now_vertex_pose = change_frame(now_vertex_pose, self.map1_map2) # 换到map2
+                            now_vertex_pose[2] = np.rad2deg(now_vertex_pose[2])
+                            goal_message, self.goal = self.get_move_goal(self.self_robot_name,now_vertex_pose )#offset = 0
+                            goal_marker = self.get_goal_marker(self.self_robot_name, now_vertex_pose)
+                            self.actoinclient.send_goal(goal_message)
+                            self.goal_pub.publish(goal_marker)
+                    
                     if find_new_target:#前往新的目标点
                         now_vertex_id = self.target_topo_path[self.now_target_vertex]
                         now_vertex_pose = self.map.vertex[now_vertex_id].pose
+                        now_vertex_pose = change_frame(now_vertex_pose, self.map1_map2) # 换到map2
+                        now_vertex_pose[2] = np.rad2deg(now_vertex_pose[2])
                         goal_message, self.goal = self.get_move_goal(self.self_robot_name,now_vertex_pose )#offset = 0
                         goal_marker = self.get_goal_marker(self.self_robot_name, now_vertex_pose)
                         self.actoinclient.send_goal(goal_message)

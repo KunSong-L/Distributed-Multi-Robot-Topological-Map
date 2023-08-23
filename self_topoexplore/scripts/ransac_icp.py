@@ -150,7 +150,7 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
     max_fit_time = 0
     # print("RANSACing...")
     failed_reason = [0,0,0]
-    max_intertation = 10000
+    max_intertation = 20000
     while total_time < max_intertation:
         total_time += 1
         srcCorr = random.sample(range(srcNum), 2)
@@ -193,7 +193,7 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
             bestR, bestT = R, T
             max_fit_time = fit_times     
 
-        if fit_times > 100:
+        if fit_times > 300:
             break
     ransac_match_ratio = maxCount/min(srcNum,tgtNum)
     

@@ -110,6 +110,7 @@ namespace ceres
                     
                     Eigen::Matrix2d rot_mat;
                     rot_mat = rot_v1 * rot_est * rot_v2.transpose();
+                    //这里目前存在一点问题，直接换算到估计的中心可能优化不出结果，最好是在estimation的地方计算误差
                     Eigen::Matrix<double,2,1> trans_mat_ = rot_v1*( rot_est * (-rot_v2.transpose() *tran_v2 ) + tran_est) + tran_v1;
 
                     double yaw_angle = std::atan2(rot_mat(1,0),rot_mat(0,0));

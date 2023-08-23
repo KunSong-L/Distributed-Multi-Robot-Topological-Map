@@ -341,7 +341,7 @@ Visualization Manager:
       Marker Topic: /robot1/vertex_free_space
       Name: MarkerArray
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
@@ -372,7 +372,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 21.22381019592285
+      Distance: 29.475627899169922
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -380,9 +380,9 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -4.1106038093566895
-        Y: 7.7443413734436035
-        Z: -1.0472224950790405
+        X: -10.361045837402344
+        Y: 10.893478393554688
+        Z: -1.0534605979919434
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

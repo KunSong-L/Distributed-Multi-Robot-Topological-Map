@@ -10,6 +10,7 @@ from scipy.spatial.distance import cdist
 from sklearn.cluster import DBSCAN
 from collections import Counter
 from sklearn.neighbors import KDTree
+from scipy.optimize import minimize
 
 
 height_vertex = 0.5
@@ -268,7 +269,7 @@ def calculate_vertex_info(frontiers, cluser_eps=1, cluster_min_samples=7):
 
     return vertex_infor
 
-def outlier_rejection(input,dis_th = 0.2):
+def outlier_rejection(input,dis_th = 0.1):
     #input: a list of estimation
     if len(input) < 4:
         return input
@@ -313,3 +314,72 @@ def outlier_rejection(input,dis_th = 0.2):
     # print("origin number:",len(input), "  final number:", len(new_input))
 
     return new_input
+
+def pose_gragh_opt(input, angle_cost = 0):
+
+    def pose_gragh_opt_cost(x):
+        R_nav_map = R.from_euler('z', x[2], degrees=True).as_matrix()
+        t_nav_map = np.array([x[0],x[1],0]).reshape(-1,1)
+        T_nav_map = np.block([[R_nav_map,t_nav_map],[np.zeros((1,4))]])
+        T_nav_map[-1,-1] = 1
+
+        cost = 0
+        for now_input in input:
+            R_map_i = R.from_euler('z', now_input[3][2], degrees=True).as_matrix()
+            t_map_i = np.array([now_input[3][0],now_input[3][1],0]).reshape(-1,1)
+            T_map_i = np.block([[R_map_i,t_map_i],[np.zeros((1,4))]])
+            T_map_i[-1,-1] = 1
+
+            R_i1_i = R.from_euler('z', now_input[4][2], degrees=True).as_matrix()
+            t_i1_i = np.array([now_input[4][0],now_input[4][1],0]).reshape(-1,1)
+            T_i1_i = np.block([[R_i1_i,t_i1_i],[np.zeros((1,4))]])
+            T_i1_i[-1,-1] = 1
+
+            T_nav_i1_est = T_nav_map @ T_map_i @ np.linalg.inv(T_i1_i)
+            rot_nav_i1_est = R.from_matrix(T_nav_i1_est[0:3,0:3]).as_euler('xyz',degrees=True)[2]
+
+            R_nav_i1 = R.from_euler('z', now_input[2][2], degrees=True).as_matrix()
+            t_nav_i1 = np.array([now_input[2][0],now_input[2][1],0]).reshape(-1,1)
+            T_nav_i1 = np.block([[R_nav_i1,t_nav_i1],[np.zeros((1,4))]])
+            T_nav_i1[-1,-1] = 1
+            rot_nav_i1 = R.from_matrix(T_nav_i1[0:3,0:3]).as_euler('xyz',degrees=True)[2]
+            
+            cost += np.linalg.norm(T_nav_i1_est[0:2,-1] - T_nav_i1[0:2,-1]) + angle_cost * abs(rot_nav_i1_est -rot_nav_i1 )
+
+        return cost
+
+    # 设置初始猜测值
+    x0 = np.array([1, 1,0])
+
+    # 求解优化问题
+    result = minimize(pose_gragh_opt_cost, x0,tol=1e-9)
+
+    # 获取最优解和最优值
+    x_optimal = result.x
+    f_optimal = result.fun
+    return x_optimal
+
+def change_frame(point_1, T_1_2):
+    #根据转换关系把在1坐标系下point转换到1坐标系下
+    #T_1_2：[x,y,yaw]格式
+    #point_1: 向量[x,y,yaw]或者[x,y]
+    #返回：在2坐标系下的point位置
+    input_length = len(point_1)
+    if input_length==2:
+        point_1 = [point_1[0],point_1[1],0]
+
+    R_1_2 = R.from_euler('z', T_1_2[2], degrees=False).as_matrix()
+    t_1_2 = np.array([T_1_2[0],T_1_2[1],0]).reshape(-1,1)
+    T_1_2 = np.block([[R_1_2,t_1_2],[np.zeros((1,4))]])
+    T_1_2[-1,-1] = 1
+    
+    R_1_point = R.from_euler('z', point_1[2], degrees=False).as_matrix()
+    t_1_point = np.array([point_1[0],point_1[1],0]).reshape(-1,1)
+    T_1_point = np.block([[R_1_point,t_1_point],[np.zeros((1,4))]])
+    T_1_point[-1,-1] = 1
+
+    T_2_point =  np.linalg.inv(T_1_2) @ T_1_point
+    rot = R.from_matrix(T_2_point[0:3,0:3]).as_euler('xyz',degrees=False)[2]
+
+    result = [T_2_point[0,-1], T_2_point[1,-1], rot]
+    return result[0:input_length]

@@ -38,7 +38,7 @@
 
 
   
-  <node name="robot_navigation" pkg="self_topoexplore" type="topo_navigation.py" output="screen">
+  <node name="robot_navigation" pkg="self_topoexplore" type="mrtopo_navigation.py" output="screen">
     <param name="network" value="retrievalSfM120k-vgg16-gem" />
     <param name="platform" value="cuda" />
     <param name="robot_name" value="robot1"/>
@@ -53,7 +53,7 @@
 
   <node name="experiment_nav" pkg="self_topoexplore" type="exp_nav.py" output="screen">
       <param name="robot_num" value="1"/>
-      <param name="nav_method" value="fht_map_4"/>
+      <param name="nav_method" value="mrtopo"/>
       <param name="target_x" value="$(arg target_x)"/>
       <param name="target_y" value="$(arg target_y)"/>
       <param name="target_yaw" value="$(arg target_yaw)"/>

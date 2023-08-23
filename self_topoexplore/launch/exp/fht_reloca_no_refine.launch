@@ -17,8 +17,8 @@
   </include>
 
   <!-- 每次实验修改一下初始位置 -->
-  <arg name="origin_x" value="0.0"/>
-  <arg name="origin_y" value="8.0"/>
+  <arg name="origin_x" value="7.0"/>
+  <arg name="origin_y" value="-5.0"/>
   <arg name="origin_yaw" value="0.0"/>
 
   <group ns="robot1">
