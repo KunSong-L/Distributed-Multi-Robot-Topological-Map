@@ -2,6 +2,7 @@
 #记录relocalization用时
 from numpy.lib.function_base import _median_dispatcher
 import rospy
+from sensor_msgs.msg import Image, LaserScan,PointCloud2, PointField
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
 import numpy as np
@@ -44,28 +45,20 @@ class map_analysis:
                 writer = csv.writer(csvfile)
                 writer.writerow(['Timestamp', 'Zeros Count','x/m','y/m'])
         rospy.Subscriber(
-            robot_name+"/map", OccupancyGrid, self.map_callback, queue_size=1)
+            robot_name+"/panoramic", Image, self.map_callback, queue_size=1)
+
     
-    def map_callback(self, map):
+    def map_callback(self, data):
         # print(map.info.origin.position)
-        map_message = OccupancyGrid()
-        map_message.header = map.header
-        map_message.info = map.info
-        # print("map orientation::", map.info.origin)
-        shape = (map.info.height, map.info.width)
-        mapdata = np.asarray(map.data).reshape(shape)
+
         if self.single_robot:
             # Count the number of zeros in the map
-            zeros_count = np.sum(mapdata == 0)
             # Save the map timestamp and number of zeros in a file
-            map_time = map.header.stamp.to_sec()
             now_pose = self.update_robot_pose()
         
-            self.map_timestamps.append(map_time)
-            self.zeros_counts.append(zeros_count)
             with open(path + robot_name + 'topo_reloca'+file_index+'.csv', 'a', newline='') as csvfile:
                 writer = csv.writer(csvfile)
-                writer.writerow([map_time, zeros_count,now_pose[0] - self.target_map_frame[0],now_pose[1]- self.target_map_frame[1]])
+                writer.writerow([data.header.stamp.to_sec(), 0,now_pose[0] - self.target_map_frame[0],now_pose[1]- self.target_map_frame[1]])
     
     def update_robot_pose(self):
         # ----get now pose----  
