@@ -1,12 +1,11 @@
 <launch>
-  <!-- relocalization -->
+  <!-- simulation env -->
   <env name="GAZEBO_MODEL_PATH" value="$(find turtlebot3sim)/models/"/>
   <arg name="model" default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/>
   <arg name="x_pos" default="-3.0"/>
   <arg name="y_pos" default="1.0"/>
   <arg name="z_pos" default="0.0"/>
 
-  <!-- <env name="GAZEBO_RESOURCE_PATH" value="$(find turtlebot3sim)/gazebo_images/includes/meshes"/> -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <arg name="world_name" value="$(find turtlebot3sim)/worlds/Academy.world"/>
     <arg name="paused" value="false"/>
@@ -16,41 +15,50 @@
     <arg name="debug" value="false"/>
   </include>
 
-  <!-- 每次实验修改一下初始位置 -->
-  <arg name="origin_x" value="0.0"/>
-  <arg name="origin_y" value="8.0"/>
-  <arg name="origin_yaw" value="0.0"/>
-  
+  <arg name="origin_x" value="6"/>
+  <arg name="origin_y" value="-7"/>
+  <arg name="origin_yaw" value="0"/>
+  <arg name="target_x" value="-8"/>
+  <arg name="target_y" value="2"/>
+  <arg name="target_yaw" value="0.0"/>
+
+
+
   <group ns="robot1">
       <include file="$(find turtlebot3sim)/launch/includes/robot.launch.xml">
           <arg name="robot_name" value="robot1"/>
           <arg name="model" value="$(arg model)"/>
           <arg name="init_pose" value="-x $(arg origin_x) -y $(arg origin_y) -z 0.0 -Y $(arg origin_yaw)"/>
-          <!-- <arg name="init_pose" value="-x 7 -y 8.0 -z 0.0 -Y 1.57"/> -->
       </include>
   </group>
 
 
   <include file="$(find turtlebot3sim)/launch/robots_slam/single_robot_origin.launch" />
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find self_topoexplore)/rviz/topo_navigation.rviz" />
+
+
   
-
-
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find self_topoexplore)/rviz/topo_reloca.rviz" />
-
-
-  <node name="map_building" pkg="self_topoexplore" type="topo_relocalization.py" output="screen">
+  <node name="robot_navigation" pkg="self_topoexplore" type="topo_navigation.py" output="screen">
     <param name="network" value="retrievalSfM120k-vgg16-gem" />
     <param name="platform" value="cuda" />
     <param name="robot_name" value="robot1"/>
     <param name="robot_num" value="1"/>
+    <param name="origin_x" value="$(arg origin_x)"/>
+    <param name="origin_y" value="$(arg origin_y)"/>
+    <param name="origin_yaw" value="$(arg origin_yaw)"/>
+    <param name="target_x" value="$(arg target_x)"/>
+    <param name="target_y" value="$(arg target_y)"/>
+    <param name="target_yaw" value="$(arg target_yaw)"/>
   </node>
 
-  <node name="experiment" pkg="self_topoexplore" type="exp_reloca.py" output="screen">
+  <node name="experiment_nav" pkg="self_topoexplore" type="exp_nav.py" output="screen">
       <param name="robot_num" value="1"/>
-      <param name="reloca_method" value="no_refine"/>
-      <param name="origin_x" value="$(arg origin_x)"/>
-      <param name="origin_y" value="$(arg origin_y)"/>
-      <param name="origin_yaw" value="$(arg origin_yaw)"/>
+      <param name="nav_method" value="no_refine"/>
+      <param name="target_x" value="$(arg target_x)"/>
+      <param name="target_y" value="$(arg target_y)"/>
+      <param name="target_yaw" value="$(arg target_yaw)"/>
   </node>
+  
 
 </launch>
