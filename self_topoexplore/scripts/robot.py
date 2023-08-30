@@ -328,10 +328,10 @@ class RobotNode:
         self.vertex_free_space_pub.publish(marker_array)
         
         #可视化vertex
-        marker_array = MarkerArray()
-        marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL)
-        marker_array.markers.append(marker_message)
-        self.marker_pub.publish(marker_array) #DELETEALL 操作，防止重影
+        # marker_array = MarkerArray()
+        # marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL)
+        # marker_array.markers.append(marker_message)
+        # self.marker_pub.publish(marker_array) #DELETEALL 操作，防止重影
         marker_array = MarkerArray()
         markerid = 0
         main_vertex_color = (self.vis_color[1][0], self.vis_color[1][1], self.vis_color[1][2])
@@ -406,7 +406,7 @@ class RobotNode:
         #check whether create a main vertex
         uncertainty_value = 0
         
-        main_vertex_dens = 7 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
+        main_vertex_dens = 25 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
         global_vertex_dens = 2 # create a support vertex large than 2 meter
         now_pose = np.array(self.pose[0:2])
         for now_vertex in self.map.vertex:
@@ -587,6 +587,7 @@ class RobotNode:
         max_index = np.where(grid_path_length == min(tmp_grid_path))[0][0]
         max_path = np.array(calculate_grid_path.foundPath[max_index])
         max_path = np.fliplr(max_path)
+        now_global_map = copy.deepcopy(self.global_map)
         created_path = np.array(self.create_an_edge_between_two_vertex(max_path,now_global_map )) #(x,y)format path, n*2,include start and end
         created_path = created_path[1:-1]
         #add this path into topo map
@@ -673,7 +674,17 @@ class RobotNode:
                         self.map.edge_id += 1
         #可能会存在bug
         if create_edge_num == 0:
-            now_vertex = self.map.vertex[-2]
+            #如果出现一个悬空节点，直接连接他和最近的节点
+            min_vertex = 0
+            min_dis = 1e10
+            for  i in range(len(self.map.vertex) - 2, -1, -1):
+                now_vertex = self.map.vertex[i]
+                last_vertex_pose = np.array(now_vertex.pose[0:2])
+                now_vertex_pose = np.array(self.current_node.pose[0:2])
+                if np.linalg.norm(last_vertex_pose - now_vertex_pose) < min_dis:
+                    min_dis = np.linalg.norm(last_vertex_pose - now_vertex_pose)
+                    min_vertex = i
+            now_vertex = self.map.vertex[min_vertex]
             link = [[now_vertex.robot_name, now_vertex.id], [self.current_node.robot_name, self.current_node.id]]
             self.map.edge.append(Edge(id=self.map.edge_id, link=link))
             self.map.edge_id += 1
@@ -1073,8 +1084,8 @@ class RobotNode:
             x = int(x1 + i * step_x)
             y = int(y1 + i * step_y)
             if x < 0 or x >= width or y < 0 or y >= height or now_global_map[y, x] != 0:
-                if now_global_map[y, x] != 255:#排除掉经过unknown的部分
-                    return False
+                # if now_global_map[y, x] != 255:#排除掉经过unknown的部分
+                return False
         return True
 
     def free_space_line(self,point1,point2):
@@ -1087,7 +1098,8 @@ class RobotNode:
         x2, y2 = point2
 
         distance = max(abs(x2 - x1), abs(y2 - y1))
-
+        if distance==0:
+            return False
         step_x = (x2 - x1) / distance
         step_y = (y2 - y1) / distance
 

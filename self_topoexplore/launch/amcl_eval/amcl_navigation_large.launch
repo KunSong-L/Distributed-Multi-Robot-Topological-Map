@@ -1,0 +1,77 @@
+<launch>
+  <!-- simulation env -->
+  <env name="GAZEBO_MODEL_PATH" value="$(find turtlebot3sim)/models/"/>
+  <arg name="model" default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/>
+  <arg name="x_pos" default="-3.0"/>
+  <arg name="y_pos" default="1.0"/>
+  <arg name="z_pos" default="0.0"/>
+  <arg name="sim_env" default="large_indoor"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(find turtlebot3sim)/worlds/$(arg sim_env).world"/>
+    <arg name="paused" value="false"/>
+    <arg name="use_sim_time" value="true"/>
+    <arg name="gui" value="true"/>
+    <arg name="headless" value="false"/>
+    <arg name="debug" value="false"/>
+  </include>
+
+  <arg name="origin_x" value="4"/>
+  <arg name="origin_y" value="25"/>
+  <arg name="origin_yaw" value="0"/>
+  <arg name="target_x" value="28"/>
+  <arg name="target_y" value="6"/>
+  <arg name="target_yaw" value="0.0"/>
+
+
+
+  <group ns="robot1">
+      <include file="$(find turtlebot3sim)/launch/includes/robot.launch.xml">
+          <arg name="robot_name" value="robot1"/>
+          <arg name="model" value="$(arg model)"/>
+          <arg name="init_pose" value="-x $(arg origin_x) -y $(arg origin_y) -z 0.12 -Y $(arg origin_yaw)"/>
+      </include>
+  </group>
+
+  <!-- 运行地图服务器，并且加载设置的地图-->
+  <node name="map_server" pkg="map_server" type="map_server" args="$(find self_topoexplore)/data/map_data/large_indoor/map.yaml">
+      <param name="frame_id" value="robot1/map"/>
+      <remap from="map" to="robot1/map"/>
+  </node>
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find self_topoexplore)/rviz/topo_navigation.rviz" />
+  
+  <node name="robot_navigation" pkg="self_topoexplore" type="amcl_navigation.py" output="screen">
+    <param name="network" value="retrievalSfM120k-vgg16-gem" />
+    <param name="platform" value="cuda" />
+    <param name="robot_name" value="robot1"/>
+    <param name="robot_num" value="1"/>
+    <param name="sim_env" value="$(arg sim_env)"/>
+    <param name="origin_x" value="$(arg origin_x)"/>
+    <param name="origin_y" value="$(arg origin_y)"/>
+    <param name="origin_yaw" value="$(arg origin_yaw)"/>
+    <param name="target_x" value="$(arg target_x)"/>
+    <param name="target_y" value="$(arg target_y)"/>
+    <param name="target_yaw" value="$(arg target_yaw)"/>
+  </node>
+
+  <node name="experiment_nav" pkg="self_topoexplore" type="exp_nav_amcl.py" output="screen">
+      <param name="robot_num" value="1"/>
+      <param name="nav_method" value="amcl"/>
+      <param name="sim_env" value="$(arg sim_env)"/>
+      <param name="target_x" value="$(arg target_x)"/>
+      <param name="target_y" value="$(arg target_y)"/>
+      <param name="target_yaw" value="$(arg target_yaw)"/>
+  </node>
+  
+  <node pkg="tf" type="static_transform_publisher" name="tf_publisher_map_odom" args="-10 -10 0 0 0 0 /robot1/map /robot1/odom 10" />
+
+  <group ns="robot1">
+    <include file="$(find turtlebot3sim)/launch/includes/cartographer_teb_amcl.launch">
+      <arg name="model" value="$(arg model)"/>
+      <arg name="configuration_basename" value="turtlebot3_robot1.lua"/>
+      <arg name="robot_name" default="robot1"/>
+    </include>
+  </group>
+
+</launch>

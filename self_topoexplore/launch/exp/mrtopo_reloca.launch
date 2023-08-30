@@ -47,6 +47,7 @@
 
   <node name="experiment" pkg="self_topoexplore" type="exp_reloca.py" output="screen">
       <param name="robot_num" value="1"/>
+      <param name="sim_env" value="museum"/>
       <param name="reloca_method" value="mrtopo"/>
       <param name="origin_x" value="$(arg origin_x)"/>
       <param name="origin_y" value="$(arg origin_y)"/>

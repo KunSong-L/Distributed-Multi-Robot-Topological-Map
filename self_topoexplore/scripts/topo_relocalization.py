@@ -374,10 +374,10 @@ class RobotNode:
         self.vertex_free_space_pub.publish(marker_array)
         
         #可视化vertex
-        marker_array = MarkerArray()
-        marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL,frame_name = "/map_origin")
-        marker_array.markers.append(marker_message)
-        self.marker_pub.publish(marker_array) #DELETEALL 操作，防止重影
+        # marker_array = MarkerArray()
+        # marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL,frame_name = "/map_origin")
+        # marker_array.markers.append(marker_message)
+        # self.marker_pub.publish(marker_array) #DELETEALL 操作，防止重影
         marker_array = MarkerArray()
         markerid = 0
         main_vertex_color = (self.vis_color[1][0], self.vis_color[1][1], self.vis_color[1][2])
@@ -420,7 +420,7 @@ class RobotNode:
         frontier_poses = self.total_frontier  
 
         dis_frontier_poses = np.sqrt(np.sum(np.square(frontier_poses - self.pose[0:2]), axis=1))
-        dis_tmp = np.exp(-(dis_frontier_poses-1)**2 / 8)
+        dis_tmp = np.exp(-(dis_frontier_poses-2)**2 / 8)
 
         angle_frontier_poses = np.arctan2(frontier_poses[:, 1] - self.pose[1], frontier_poses[:, 0] - self.pose[0]) - self.pose[2] / 180 * np.pi
         angle_tmp = np.exp(-angle_frontier_poses**2 / 1)

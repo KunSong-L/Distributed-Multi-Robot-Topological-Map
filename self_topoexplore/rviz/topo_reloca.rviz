@@ -229,6 +229,8 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: false
+        reloca_map:
+          Value: true
         robot1/base_camera1:
           Value: true
         robot1/base_camera2:
@@ -252,6 +254,8 @@ Visualization Manager:
         robot1/map_origin:
           Value: true
         robot1/odom:
+          Value: true
+        robot1/odom_amcl:
           Value: true
         robot1/wheel_left_link:
           Value: true
@@ -288,6 +292,8 @@ Visualization Manager:
                   {}
                 robot1/wheel_right_link:
                   {}
+            robot1/odom_amcl:
+              {}
       Update Interval: 0
       Value: true
     - Class: rviz/Marker
@@ -372,7 +378,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 23.001014709472656
+      Distance: 46.05482482910156
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -380,17 +386,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -0.715812087059021
-        Y: 4.890098571777344
-        Z: -0.9916861057281494
+        X: 1.0801854133605957
+        Y: 3.1989734172821045
+        Z: -29.075218200683594
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5497963428497314
+      Pitch: 1.544796347618103
       Target Frame: <Fixed Frame>
-      Yaw: 3.1353907585144043
+      Yaw: 3.1303906440734863
     Saved: ~
 Window Geometry:
   Displays:

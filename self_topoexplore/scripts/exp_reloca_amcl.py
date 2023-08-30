@@ -30,7 +30,23 @@ class map_analysis:
         self.last_pose = [0,0,0]
         self.reloca_method = reloca_method
         self.last_rela_pose_from_tf = [0,0,0]
-        self.gt_rela_pose = [7,0,90] #相对位姿变换的真值，每次做实验修改一下！！！！
+        # self.gt_rela_pose = [7,0,90] #相对位姿变换的真值，每次做实验修改一下！！！！
+        self.robot_origin = [rospy.get_param("~origin_x"), rospy.get_param("~origin_y"), rospy.get_param("~origin_yaw")]
+        for i in range(3):
+            self.robot_origin[i] = float(self.robot_origin[i])
+        #计算理论值
+        if sim_env=="museum":
+            gt_vector = np.array([7-self.robot_origin[0], 8 - self.robot_origin[1]])
+            theta = self.robot_origin[2]
+            gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
+            rot = 90 - np.rad2deg(theta)
+            self.gt_rela_pose = [gt_2[0],gt_2[1],rot] #每次需要修改
+        if sim_env == "large_indoor":
+            gt_vector = np.array([10-self.robot_origin[0], 10 - self.robot_origin[1]])
+            theta = self.robot_origin[2]
+            gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
+            rot = 0 - np.rad2deg(theta)
+            self.gt_rela_pose = [gt_2[0],gt_2[1],rot] #每次需要修改
         rospy.Subscriber("/tf", TFMessage, self.get_rela_pose_amcl)
 
         if self.single_robot:
@@ -64,8 +80,11 @@ class map_analysis:
             
             if self.reloca_method == "amcl":
                 rela_pose_amcl = self.last_rela_pose_from_tf
-            
-            amcl_gt = [7,8,90]
+            if sim_env=="museum":
+                amcl_gt = [7,8,90]
+            if sim_env == "large_indoor":
+                amcl_gt = [10,10,0]
+
             for i in range(3):
                 rela_pose_fht[i] -= self.gt_rela_pose[i]
                 # rela_pose_amcl[i] -= self.gt_rela_pose[i] #如果不用gazebo odom就这么写
@@ -82,9 +101,9 @@ class map_analysis:
         # ----get now pose----  
         #tracking map->base_footprint
         tmptimenow = rospy.Time.now()
-        self.tf_listener.waitForTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow, rospy.Duration(0.5))
         pose = [0,0]
         try:
+            self.tf_listener.waitForTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow, rospy.Duration(0.5))
             tf_transform, rotation = self.tf_listener.lookupTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow)
             pose[0] = tf_transform[0]
             pose[1] = tf_transform[1]
@@ -144,8 +163,8 @@ if __name__ == '__main__':
         print("This file is for amcl only!!!!!!!!!!")
         sys.exit(1)  # 退出程序，并指定退出状态码（非零表示错误）
 
-
-    path = "/home/master/topomap_data/relocolization/"+reloca_method+"/museum/"
+    sim_env = rospy.get_param('~sim_env')
+    path = "/home/master/topomap_data/relocolization/"+reloca_method+"/"+sim_env+"/"
     file_paths = glob.glob(os.path.join(path, "*"))
 
     # 按文件名进行排序

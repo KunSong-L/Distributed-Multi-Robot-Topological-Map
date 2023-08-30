@@ -134,20 +134,42 @@ class RobotNode:
         #navigation
         #获取相对位姿，直接完成重定位
         self.robot_origin = [rospy.get_param("~origin_x"), rospy.get_param("~origin_y"), rospy.get_param("~origin_yaw")]
+        #计算理论值
         for i in range(3):
             self.robot_origin[i] = float(self.robot_origin[i])
-        #计算理论值
-        gt_vector = np.array([7-self.robot_origin[0], 8 - self.robot_origin[1]])
-        theta = self.robot_origin[2]
-        gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
-        rot = 90 - np.rad2deg(theta)
-
-        self.map2_map1 = [gt_2[0],gt_2[1],np.deg2rad(rot)]#原始map在新map坐标系下位置
-        self.map1_map2 = change_frame([0,0,0], self.map2_map1)        
-
-        self.world_map1 = [7,8,1.57]
+        
+        try:
+            now_env = rospy.get_param("~sim_env")
+        except:
+            now_env = "museum"
+        if now_env == "large_indoor":
+            self.world_map1 = [10,10,0]
+            self.robot_origin = [rospy.get_param("~origin_x"), rospy.get_param("~origin_y"), rospy.get_param("~origin_yaw")]
+            for i in range(3):
+                self.robot_origin[i] = float(self.robot_origin[i])
+            #计算理论值
+            gt_vector = np.array([10-self.robot_origin[0], 10 - self.robot_origin[1]])
+            theta = self.robot_origin[2]
+            gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
+            rot = 0 - np.rad2deg(theta)
+            self.map2_map1 = [gt_2[0],gt_2[1],np.deg2rad(rot)]#原始map在新map坐标系下位置
+            self.map1_map2 = change_frame([0,0,0], self.map2_map1)  
+        if now_env == "museum":
+            self.world_map1 = [7,8,1.57]
+            self.robot_origin = [rospy.get_param("~origin_x"), rospy.get_param("~origin_y"), rospy.get_param("~origin_yaw")]
+            for i in range(3):
+                self.robot_origin[i] = float(self.robot_origin[i])
+            #计算理论值
+            gt_vector = np.array([7-self.robot_origin[0], 8 - self.robot_origin[1]])
+            theta = self.robot_origin[2]
+            gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
+            rot = 90 - np.rad2deg(theta)
+            self.map2_map1 = [gt_2[0],gt_2[1],np.deg2rad(rot)]#原始map在新map坐标系下位置
+            self.map1_map2 = change_frame([0,0,0], self.map2_map1)  
+        
         self.world_map2 = [rospy.get_param("~origin_x"), rospy.get_param("~origin_y"), rospy.get_param("~origin_yaw")]
-        self.map2_world = change_frame([0,0,0], self.world_map2)      
+        self.map2_world = change_frame([0,0,0], self.world_map2)
+
         #获取目标点
         self.nav_target = [rospy.get_param("~target_x"), rospy.get_param("~target_y"), rospy.get_param("~target_yaw")]
         for i in range(3):

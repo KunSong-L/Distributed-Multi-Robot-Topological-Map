@@ -83,7 +83,8 @@ if __name__ == '__main__':
     rospy.init_node("map_analysis")
 
     reloca_method = rospy.get_param('~nav_method')
-    path = "/home/master/topomap_data/navigation/"+reloca_method+"/museum/"
+    sim_env = rospy.get_param('~sim_env')
+    path = "/home/master/topomap_data/navigation/"+reloca_method+"/" + sim_env +"/"
     file_paths = glob.glob(os.path.join(path, "*"))
 
     # 按文件名进行排序

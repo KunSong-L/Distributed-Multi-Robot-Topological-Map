@@ -349,7 +349,7 @@ def pose_gragh_opt(input, angle_cost = 0):
         return cost
 
     # 设置初始猜测值
-    x0 = np.array([1, 1,0])
+    x0 = np.array([1, 1,50])
 
     # 求解优化问题
     result = minimize(pose_gragh_opt_cost, x0,tol=1e-9)

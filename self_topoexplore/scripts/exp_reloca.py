@@ -34,12 +34,19 @@ class map_analysis:
         for i in range(3):
             self.robot_origin[i] = float(self.robot_origin[i])
         #计算理论值
-        gt_vector = np.array([7-self.robot_origin[0], 8 - self.robot_origin[1]])
-        theta = self.robot_origin[2]
-        gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
-        rot = 90 - np.rad2deg(theta)
+        if sim_env=="museum":
+            gt_vector = np.array([7-self.robot_origin[0], 8 - self.robot_origin[1]])
+            theta = self.robot_origin[2]
+            gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
+            rot = 90 - np.rad2deg(theta)
+            self.gt_rela_pose = [gt_2[0],gt_2[1],rot] #每次需要修改
+        if sim_env == "large_indoor":
+            gt_vector = np.array([10-self.robot_origin[0], 10 - self.robot_origin[1]])
+            theta = self.robot_origin[2]
+            gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
+            rot = 0 - np.rad2deg(theta)
+            self.gt_rela_pose = [gt_2[0],gt_2[1],rot] #每次需要修改
 
-        self.gt_rela_pose = [gt_2[0],gt_2[1],rot] #每次需要修改
         if reloca_method == "amcl":
             rospy.Subscriber("/tf", TFMessage, self.get_rela_pose_amcl)
 
@@ -144,7 +151,8 @@ if __name__ == '__main__':
     rospy.init_node("map_analysis")
 
     reloca_method = rospy.get_param('~reloca_method')
-    path = "/home/master/topomap_data/relocolization/"+reloca_method+"/museum/"
+    sim_env = rospy.get_param('~sim_env')
+    path = "/home/master/topomap_data/relocolization/"+reloca_method+"/" + sim_env +"/"
     file_paths = glob.glob(os.path.join(path, "*"))
 
     # 按文件名进行排序
