@@ -564,7 +564,6 @@ class RobotNode:
             print("-----------Start Nav-------------")
             
             self.vertex_map_ready = True
-
             #start navigation
             #target original in wrold frame, so change into map frame
             self.map2_target = change_frame(self.nav_target, self.world_map2) #目标在当前地图坐标系中位置

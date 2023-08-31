@@ -16,10 +16,10 @@
     <arg name="debug" value="false"/>
   </include>
 
-  <arg name="origin_x" value="49"/>
-  <arg name="origin_y" value="17"/>
+  <arg name="origin_x" value="44"/>
+  <arg name="origin_y" value="24"/>
   <arg name="origin_yaw" value="0"/>
-  <arg name="target_x" value="49"/>
+  <arg name="target_x" value="40"/>
   <arg name="target_y" value="33"/>
   <arg name="target_yaw" value="0.0"/>
 
@@ -54,7 +54,7 @@
 
   <node name="experiment_nav" pkg="self_topoexplore" type="exp_nav.py" output="screen">
       <param name="robot_num" value="1"/>
-      <param name="nav_method" value="fht_map_7"/>
+      <param name="nav_method" value="no_refine_25"/>
       <param name="sim_env" value="$(arg sim_env)"/>
       <param name="target_x" value="$(arg target_x)"/>
       <param name="target_y" value="$(arg target_y)"/>
