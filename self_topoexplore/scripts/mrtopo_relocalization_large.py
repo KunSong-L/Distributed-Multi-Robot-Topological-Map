@@ -136,7 +136,7 @@ class RobotNode:
         self.tf_listener2 = tf.TransformListener()
         self.tf_transform = None
         self.rotation = None
-        
+        self.first_gen_topomap = True
         #relative pose estimation
         x_offset = 0.1
         y_offset = 0.2
@@ -158,9 +158,9 @@ class RobotNode:
         
         #publisher and subscriber
         self.marker_pub = rospy.Publisher(
-            robot_name+"/visualization/marker", MarkerArray, queue_size=1)
+            robot_name+"/visualization/marker", MarkerArray, queue_size=100)
         self.edge_pub = rospy.Publisher(
-            robot_name+"/visualization/edge", MarkerArray, queue_size=1)
+            robot_name+"/visualization/edge", MarkerArray, queue_size=100)
         self.twist_pub = rospy.Publisher(
             robot_name+"/mobile_base/commands/velocity", Twist, queue_size=1)
         self.goal_pub = rospy.Publisher(
@@ -380,40 +380,44 @@ class RobotNode:
         # marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL,frame_name = "/map_origin")
         # marker_array.markers.append(marker_message)
         # self.marker_pub.publish(marker_array) #DELETEALL 操作，防止重影
-        marker_array = MarkerArray()
-        markerid = 0
-        main_vertex_color = (self.vis_color[1][0], self.vis_color[1][1], self.vis_color[1][2])
-        support_vertex_color = (self.vis_color[2][0], self.vis_color[2][1], self.vis_color[2][2])
-
-        for vertex in self.map.vertex:
-            if vertex.robot_name != robot_name:
-                marker_message = set_marker(robot_name, markerid, vertex.pose)#other color
-            else:
-                if isinstance(vertex, Vertex):
-                    marker_message = set_marker(robot_name, markerid, vertex.pose, color=main_vertex_color, scale=0.3,frame_name = "/map_origin")
-                else:
-                    marker_message = set_marker(robot_name, markerid, vertex.pose, color=support_vertex_color, scale=0.25,frame_name = "/map_origin")
-            marker_array.markers.append(marker_message)
-            markerid += 1
-        
-        #visualize edge
-        #可视化edge就是把两个vertex的pose做一个连线
-        main_edge_color = (self.vis_color[3][0], self.vis_color[3][1], self.vis_color[3][2])
-        edge_array = MarkerArray()
-        for edge in self.map.edge:
-            num_count = 0
-            poses = []
+        if self.first_gen_topomap:
+            marker_array = MarkerArray()
+            markerid = 0
+            main_vertex_color = (self.vis_color[1][0], self.vis_color[1][1], self.vis_color[1][2])
+            support_vertex_color = (self.vis_color[2][0], self.vis_color[2][1], self.vis_color[2][2])
             for vertex in self.map.vertex:
-                # find match
-                if (edge.link[0][0]==vertex.robot_name and edge.link[0][1]==vertex.id) or (edge.link[1][0]==vertex.robot_name and edge.link[1][1]==vertex.id):
-                    poses.append(vertex.pose)
-                    num_count += 1
-                if num_count == 2:
-                    edge_message = set_edge(robot_name, edge.id, poses, "edge",main_edge_color, scale=0.1,frame_name = "/map_origin")
-                    edge_array.markers.append(edge_message)
-                    break
-        self.marker_pub.publish(marker_array)
-        self.edge_pub.publish(edge_array)
+                if vertex.robot_name != robot_name:
+                    marker_message = set_marker(robot_name, markerid, vertex.pose)#other color
+                else:
+                    if isinstance(vertex, Vertex):
+                        marker_message = set_marker(robot_name, markerid, vertex.pose, color=main_vertex_color, scale=0.5,frame_name = "/map_origin")
+                    else:
+                        continue
+                        # marker_message = set_marker(robot_name, markerid, vertex.pose, color=support_vertex_color, scale=0.4,frame_name = "/map_origin")
+                marker_array.markers.append(marker_message)
+                markerid += 1
+            #visualize edge
+            #可视化edge就是把两个vertex的pose做一个连线
+            main_edge_color = (self.vis_color[3][0], self.vis_color[3][1], self.vis_color[3][2])
+            edge_array = MarkerArray()
+            for edge in self.map.edge:
+                poses = []
+                poses.append(self.map.vertex[edge.link[0][1]].pose)
+                poses.append(self.map.vertex[edge.link[1][1]].pose)
+                edge_message = set_edge(robot_name, edge.id, poses, "edge",main_edge_color, scale=0.1,frame_name = "/map_origin")
+                edge_array.markers.append(edge_message)
+            
+            self.marker_array = marker_array
+            self.edge_array = edge_array
+            self.first_gen_topomap = False
+        
+        #update time
+        for i in range(len(self.marker_array.markers)):
+            self.marker_array.markers[i].header.stamp = rospy.Time.now()
+        for i in range(len(self.edge_array.markers)):
+            self.edge_array.markers[i].header.stamp = rospy.Time.now()
+        self.marker_pub.publish(self.marker_array)
+        self.edge_pub.publish(self.edge_array)
 
     def choose_nav_goal(self):
         dis_epos = 1
@@ -482,9 +486,6 @@ class RobotNode:
             self.vertex_map_ready = True
         
         self.update_robot_pose() #update robot pose
-        
-        self.update_frontier()
-        self.change_goal()
         # init map pose
         best_match_rate = 0
         best_match_index = 0
@@ -636,8 +637,8 @@ class RobotNode:
 
     def map_grid_callback(self, data):
         #可视化部分太卡了
-        # if self.vertex_map_ready:
-        #     self.visulize_vertex()
+        if self.vertex_map_ready:
+            self.visulize_vertex()
         #generate grid map and global grid map
         range = int(6/self.map_resolution)
         self.global_map_info = data.info

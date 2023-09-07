@@ -388,9 +388,9 @@ class RobotNode:
                 marker_message = set_marker(robot_name, markerid, vertex.pose)#other color
             else:
                 if isinstance(vertex, Vertex):
-                    marker_message = set_marker(robot_name, markerid, vertex.pose, color=main_vertex_color, scale=0.3,frame_name = "/map_origin")
+                    marker_message = set_marker(robot_name, markerid, vertex.pose, color=main_vertex_color, scale=0.5,frame_name = "/map_origin")
                 else:
-                    marker_message = set_marker(robot_name, markerid, vertex.pose, color=support_vertex_color, scale=0.25,frame_name = "/map_origin")
+                    marker_message = set_marker(robot_name, markerid, vertex.pose, color=support_vertex_color, scale=0.4,frame_name = "/map_origin")
             marker_array.markers.append(marker_message)
             markerid += 1
         
@@ -407,7 +407,7 @@ class RobotNode:
                     poses.append(vertex.pose)
                     num_count += 1
                 if num_count == 2:
-                    edge_message = set_edge(robot_name, edge.id, poses, "edge",main_edge_color, scale=0.1,frame_name = "/map_origin")
+                    edge_message = set_edge(robot_name, edge.id, poses, "edge",main_edge_color, scale=0.08,frame_name = "/map_origin")
                     edge_array.markers.append(edge_message)
                     break
         self.marker_pub.publish(marker_array)
@@ -472,27 +472,27 @@ class RobotNode:
         if self.init_map_pose:
             self.update_relative_pose()
             self.vertex_map_ready = True
-
         self.visulize_vertex()
-        max_pose = 0
-        max_edge_id = 0
+        #删除部分节点
+        # max_pose = 0
+        # max_edge_id = 0
         
-        for index, now_edge in enumerate(self.map.edge):
-            now_link = now_edge.link
-            id1 = now_link[0][1]
-            id2 = now_link[1][1]
-            pose1 = np.array(self.map.vertex[id1].pose[0:2])
-            pose2 = np.array(self.map.vertex[id2].pose[0:2])
-            if np.linalg.norm(pose1-pose2) > max_pose:
-                max_pose = np.linalg.norm(pose1-pose2)
-                max_edge_id = index
-        print(max_pose)
-        if self.first_delete == False:
-            del self.map.edge[max_edge_id]
-            self.first_delete = True
-        else:
-            topomap_message = TopomapToMessage(self.map)
-            self.topomap_pub.publish(topomap_message) # publish topomap important!
+        # for index, now_edge in enumerate(self.map.edge):
+        #     now_link = now_edge.link
+        #     id1 = now_link[0][1]
+        #     id2 = now_link[1][1]
+        #     pose1 = np.array(self.map.vertex[id1].pose[0:2])
+        #     pose2 = np.array(self.map.vertex[id2].pose[0:2])
+        #     if np.linalg.norm(pose1-pose2) > max_pose:
+        #         max_pose = np.linalg.norm(pose1-pose2)
+        #         max_edge_id = index
+        # print(max_pose)
+        # if self.first_delete == False:
+        #     del self.map.edge[max_edge_id]
+        #     self.first_delete = True
+        # else:
+        #     topomap_message = TopomapToMessage(self.map)
+        #     self.topomap_pub.publish(topomap_message) # publish topomap important!
        
    
 

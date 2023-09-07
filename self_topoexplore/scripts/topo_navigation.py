@@ -572,16 +572,14 @@ class RobotNode:
             #判断初始点是否在free space
             start_x = self.map1_start[0]
             start_y = self.map1_start[1]
-            start_in_vertex_index = -1
+            start_in_vertex_index = []
             for i in range(len(self.map.vertex)):
                 now_free_space = self.map.vertex[i].local_free_space_rect
                 if now_free_space[0] < start_x and start_x < now_free_space[2] and now_free_space[1] < start_y and start_y < now_free_space[3]:
-                    start_in_vertex_index = i
-                    break
-            self.start_on_freespace = True
-            if start_in_vertex_index == -1:
+                    start_in_vertex_index.append(i)
+            
+            if len(start_in_vertex_index) == 0:
                 #对于目标点不在free space 情况，找一个最近的vertex导航过去
-                self.target_on_freespace = False
                 min_dis = 1e100
                 min_index = -1
                 for i in range(len(self.map.vertex)):
@@ -590,21 +588,19 @@ class RobotNode:
                     if now_dis < min_dis:
                         min_dis = now_dis
                         min_index = i
-                start_in_vertex_index = min_index
+                start_in_vertex_index.append(min_index)
 
             #check whether target in free space 
             nav_target_x = self.map1_target[0]
             nav_target_y = self.map1_target[1]
-            target_in_vertex_index = -1
+            target_in_vertex_index = []
             for i in range(len(self.map.vertex)):
                 now_free_space = self.map.vertex[i].local_free_space_rect
                 if now_free_space[0] < nav_target_x and nav_target_x < now_free_space[2] and now_free_space[1] < nav_target_y and nav_target_y < now_free_space[3]:
-                    target_in_vertex_index = i
-                    break
-            self.target_on_freespace = True
-            if target_in_vertex_index == -1:
+                    target_in_vertex_index.append(i)
+
+            if len(target_in_vertex_index) == 0:
                 #对于目标点不在free space 情况，找一个最近的vertex导航过去
-                self.target_on_freespace = False
                 min_dis = 1e100
                 min_index = -1
                 for i in range(len(self.map.vertex)):
@@ -613,17 +609,35 @@ class RobotNode:
                     if now_dis < min_dis:
                         min_dis = now_dis
                         min_index = i
-                target_in_vertex_index = min_index
+                target_in_vertex_index.append(min_index)
 
             self.adj_list = dict()
             self.edge_to_adj_list()
             #get total id and pose
-            target_id_list = [start_in_vertex_index,target_in_vertex_index]
-            #estimate path on topomap
-            topo_map = topo_map_path(self.adj_list,target_id_list[-1], target_id_list[0:-1])
-            topo_map.get_path()
-            target_path = topo_map.foundPath[0][::-1]
-                
+            shortest_path_length = 1e100
+            target_path = None
+            start_point_pose = np.array([start_x,start_y])
+            end_point_pose = np.array([nav_target_x,nav_target_y])
+            for now_start in start_in_vertex_index:
+                now_start_pose = np.array(self.map.vertex[now_start].pose[0:2])
+                for now_end in target_in_vertex_index:
+                    now_end_pose = np.array(self.map.vertex[now_end].pose[0:2])
+                    target_id_list = [now_start, now_end]
+                    topo_map = topo_map_path(self.adj_list,target_id_list[-1], target_id_list[0:-1])
+                    topo_map.get_path()
+                    now_path_length = topo_map.path_length[0] + np.linalg.norm(start_point_pose - now_start_pose) + np.linalg.norm(end_point_pose - now_end_pose)
+                    if now_path_length < shortest_path_length:
+                        shortest_path_length = now_path_length
+                        target_path = copy.deepcopy(topo_map.foundPath[0][::-1])
+                    
+                    
+            # target_id_list = [start_in_vertex_index,target_in_vertex_index]
+            # #estimate path on topomap
+            # topo_map = topo_map_path(self.adj_list,target_id_list[-1], target_id_list[0:-1])
+            # topo_map.get_path()
+            # target_path = topo_map.foundPath[0][::-1]
+
+            #这部分最后的输出结果
             self.update_navigation_path_flag = True
             self.target_topo_path = target_path
         else:
