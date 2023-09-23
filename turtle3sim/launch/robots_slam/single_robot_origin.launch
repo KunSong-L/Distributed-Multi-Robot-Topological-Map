@@ -13,6 +13,7 @@
 
   <node name="map_padding" pkg="turtlebot3sim" type="map_padding.py" output="screen">
     <param name="robot_name" value="robot1"/>
+    <param name="robot_num" value="1"/>
   </node>
   
   <rosparam param="map_resolution">0.05</rosparam>

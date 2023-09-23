@@ -25,10 +25,10 @@
         <remap from="map" to="cartographer_discrete_map"/>
   </node>
 
-  <include file="$(find smmr_explore_wrapper)/launch/smmr_mapping.launch">
+  <!-- <include file="$(find smmr_explore_wrapper)/launch/smmr_mapping.launch">
     <arg name="robotname" value="$(arg robot_name)"/>
     <arg name="weightspath" value="$(arg weightspath)" />
-  </include>
+  </include> -->
 
   <node name="graythreenode" pkg="graythree" type="graythree_node">
     <remap from="cartographerMap" to="cartographer_discrete_map"/>

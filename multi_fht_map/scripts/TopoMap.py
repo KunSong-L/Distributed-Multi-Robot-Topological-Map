@@ -48,7 +48,6 @@ def get_frontier_points(map, resolution=0.01) -> list:
     return centers
 
 class Vertex:
-
     def __init__(self, robot_name=None, id=None, pose=None, descriptor=None, localMap=None, local_image=None, local_laserscan_angle=None) -> None:
         self.robot_name = robot_name
         self.id = id
@@ -97,6 +96,8 @@ class TopologicalMap:
         self.center_dict = dict()
         self.offset_angle = 0
         self.map_resolution = float(rospy.get_param('map_resolution', 0.05))
+        self.rotation = np.eye(3) #rotation from this topomap to robot1 frame
+        self.trans_vector = np.array([0,0,0])
     
     def insert(self, vertex=None, edge=None) -> None:
         self.vertex.append(vertex)
@@ -110,6 +111,29 @@ class TopologicalMap:
 
         return self.vertex_id, current_node
     
+    def change_topomap_frame(self, map_frame_pose):
+        #topomap: FHT-Map in other frame
+        #map_frame_pose: map_frame_pose[0] 3x3 rotation matrix of R^robot1_other
+        #map_frame_pose: map_frame_pose[1] 3x1 transform vector of t^robot1_other
+        now_robot_map_frame_rot = map_frame_pose[0]
+        now_robot_map_frame_trans = map_frame_pose[1]
+        for vertex in self.vertex:
+            #transpose vertex pose
+            tmp_pose = now_robot_map_frame_rot @ np.array([vertex.pose[0],vertex.pose[1],0]) + now_robot_map_frame_trans
+            vertex.pose[0] = tmp_pose[0]
+            vertex.pose[1] = tmp_pose[1]
+            #transpose pose of local free space
+            p1_local_s = np.append(np.array(vertex.local_free_space_rect[0:2]),0)
+            p1_local_s = now_robot_map_frame_rot @ p1_local_s + now_robot_map_frame_trans
+            p2_local_s = np.append(np.array(vertex.local_free_space_rect[2:]),0)
+            p2_local_s = now_robot_map_frame_rot @ p2_local_s + now_robot_map_frame_trans
+            vertex.local_free_space_rect = [p1_local_s[0],p1_local_s[1],p2_local_s[0],p2_local_s[1]]
+        
+        #update transpose of FHT-Map
+        self.rotation = copy.deepcopy(map_frame_pose[0])
+        self.trans_vector = copy.deepcopy(map_frame_pose[1])
+            
+
     
     def upgradeFrontierPoints(self, vertex_id=-1, type="new", resolution=0.05):
         picked_vertex = None

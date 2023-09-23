@@ -1,16 +1,12 @@
 #!/usr/bin/python3.8
 from tkinter.constants import Y
 import rospy
-from rospy.rostime import Duration
 from rospy.timer import Rate, sleep
 from sensor_msgs.msg import Image, LaserScan
 import rospkg
 import tf
 from std_msgs.msg import String
-from nav_msgs.msg import Odometry
 from nav_msgs.msg import OccupancyGrid
-from nav_msgs.msg import Path
-from torch import jit
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Twist, PoseStamped, Point
 from laser_geometry import LaserProjection
@@ -18,8 +14,6 @@ import message_filters
 import actionlib
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from actionlib_msgs.msg import GoalStatusArray
-from gazebo_msgs.msg import ModelStates
-from self_topoexplore.msg import UnexploredDirectionsMsg
 from self_topoexplore.msg import TopoMapMsg
 from self_topoexplore.msg import ImageWithPointCloudMsg
 from TopoMap import Support_Vertex, Vertex, Edge, TopologicalMap
@@ -55,7 +49,7 @@ class RobotNode:
     def __init__(self, robot_name, robot_list):#输入当前机器人，其他机器人的id list
         rospack = rospkg.RosPack()
         self.self_robot_name = robot_name
-        path = rospack.get_path('self_topoexplore')
+        path = rospack.get_path('multi_fht_map')
         # in simulation environment each robot has same intrinsic matrix
         self.K_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
         #network part
@@ -111,22 +105,24 @@ class RobotNode:
         self.vertex_dict[self.self_robot_name] = list()
         self.matched_vertex_dict = dict()
         self.now_feature = np.array([])
-        self.adj_list = dict()
-
-        self.edge_dict = dict()
-        self.relative_position = dict()
-        self.relative_orientation = dict()
+        self.adj_list = dict()#拓扑地图到邻接矩阵
         self.meeted_robot = list()
         self.potential_main_vertex = list()
         for item in robot_list:
             self.vertex_dict[item] = list()
-            self.matched_vertex_dict[item] = list()
-            self.edge_dict[item] = list()
-            self.relative_position[item] = [0, 0, 0]
-            self.relative_orientation[item] = 0
+            self.matched_vertex_dict[item] = list() #和其他机器人已经匹配上的节点
 
+        #For multi robot map merge
+        self.topomap_matched_score = 0.96
+        
+        self.topomap_dict = dict() #FHT-Map of other map
+        self.topomap_robot1frame_dict = dict() #FHT-Map of other map in robot1 frame
+        self.topomap_robot1frame_dict[robot_name] = None
+        if robot_name == 'robot1':
+            for item in robot_list:
+                self.topomap_dict[item] = None
+                self.topomap_robot1frame_dict[item] = None
 
-        self.topomap_matched_score = 0.7
         # get tf
         self.tf_listener = tf.TransformListener()
         self.tf_listener2 = tf.TransformListener()
@@ -136,13 +132,11 @@ class RobotNode:
         #relative pose estimation
         self.image_req_sub = rospy.Subscriber('/request_image', String, self.receive_image_req_callback)
         self.image_data_sub = None
-
         self.relative_pose_image = None
         self.relative_pose_pc = None
         self.image_ready = 0
         self.image_req_publisher = rospy.Publisher('/request_image', String, queue_size=1)
         self.image_data_pub = rospy.Publisher(robot_name+'/relative_pose_est_image', ImageWithPointCloudMsg, queue_size=1)#发布自己节点的图片
-
         x_offset = 0.1
         y_offset = 0.2
         self.cam_trans = [[x_offset,0,0],[0,y_offset,math.pi/2],[-x_offset,0.0,math.pi],[0,-y_offset,-math.pi/2]] # camera position
@@ -153,6 +147,7 @@ class RobotNode:
         self.laser_scan_init = False
         self.local_laserscan = None
         self.local_laserscan_angle = None
+
         #move base
         self.actoinclient = actionlib.SimpleActionClient(robot_name+'/move_base', MoveBaseAction)
         self.trajectory_point = None
@@ -188,9 +183,12 @@ class RobotNode:
             robot_name+"/panoramic", Image, self.map_panoramic_callback, queue_size=1)
         rospy.Subscriber(
             robot_name+"/map", OccupancyGrid, self.map_grid_callback, queue_size=1)
-        for robot in robot_list:
-            rospy.Subscriber(
-                robot+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1, buff_size=52428800)
+        #only robot1 subscribe all vertex
+        if robot_name == "robot1":
+            for robot in robot_list:
+                rospy.Subscriber(
+                    robot+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1, buff_size=52428800)
+        
         rospy.Subscriber(
             robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
         rospy.Subscriber(
@@ -270,6 +268,8 @@ class RobotNode:
 
 
     def visulize_vertex(self):
+        #对self.topomap_robot1frame_dict[robot_name]中所有做可视化
+        self.topomap_robot1frame_dict[robot_name] = self.map
         # ----------visualize frontier------------
         frontier_marker = Marker()
         now = rospy.Time.now()
@@ -297,73 +297,72 @@ class RobotNode:
         #可视化vertex free space
         # 创建所有平面的Marker消息
         markers = []
-
-        for index, now_vertex in enumerate(self.map.vertex):
-            if now_vertex.local_free_space_rect == [0,0,0,0]:
+        for now_map in self.topomap_robot1frame_dict.values():
+            if now_map == None:
                 continue
-            x1,y1,x2,y2 = now_vertex.local_free_space_rect
-            marker = Marker()
-            marker.header.frame_id = robot_name + "/map"
-            marker.type = Marker.CUBE
-            marker.action = Marker.ADD
-            marker.pose.position.x = (x1 + x2)/2.0
-            marker.pose.position.y = (y1 + y2)/2.0
-            marker.pose.position.z = 0.0
-            marker.pose.orientation.x = 0.0
-            marker.pose.orientation.y = 0.0
-            marker.pose.orientation.z = 0.0
-            marker.pose.orientation.w = 1.0
-            marker.scale.x = abs(x2 - x1)
-            marker.scale.y = abs(y2 - y1)
-            marker.scale.z = 0.03 # 指定平面的厚度
-            marker.color.r = 0.0
-            marker.color.g = 1.0
-            marker.color.b = 0.0
-            marker.color.a = 0.2 # 指定平面的透明度
-            marker.id = index
-            markers.append(marker)
+            ori_map = R.from_matrix(now_map.rotation).as_quat()
+            for index, now_vertex in enumerate(now_map.vertex):
+                if now_vertex.local_free_space_rect == [0,0,0,0]:
+                    continue
+                x1,y1,x2,y2 = now_vertex.local_free_space_rect
+                marker = Marker()
+                marker.header.frame_id = robot_name + "/map"
+                marker.type = Marker.CUBE
+                marker.action = Marker.ADD
+                marker.pose.position.x = (x1 + x2)/2.0
+                marker.pose.position.y = (y1 + y2)/2.0
+                marker.pose.position.z = 0.0
+                marker.pose.orientation.x = ori_map[0]
+                marker.pose.orientation.y = ori_map[1]
+                marker.pose.orientation.z = ori_map[2]
+                marker.pose.orientation.w = ori_map[3]
+                marker.scale.x = abs(x2 - x1)
+                marker.scale.y = abs(y2 - y1)
+                marker.scale.z = 0.03 # 指定平面的厚度
+                marker.color.r = 0.0
+                marker.color.g = 1.0
+                marker.color.b = 0.0
+                marker.color.a = 0.2 # 指定平面的透明度
+                marker.id = index
+                markers.append(marker)
         # 将所有Marker消息放入一个MarkerArray消息中，并发布它们
         marker_array = MarkerArray()
         marker_array.markers = markers
         self.vertex_free_space_pub.publish(marker_array)
         
         #可视化vertex
-        # marker_array = MarkerArray()
-        # marker_message = set_marker(robot_name, len(self.map.vertex), self.map.vertex[0].pose, action=Marker.DELETEALL)
-        # marker_array.markers.append(marker_message)
-        # self.marker_pub.publish(marker_array) #DELETEALL 操作，防止重影
         marker_array = MarkerArray()
         markerid = 0
         main_vertex_color = (self.vis_color[1][0], self.vis_color[1][1], self.vis_color[1][2])
         support_vertex_color = (self.vis_color[2][0], self.vis_color[2][1], self.vis_color[2][2])
-
-        for vertex in self.map.vertex:
-            if vertex.robot_name != robot_name:
-                marker_message = set_marker(robot_name, markerid, vertex.pose)#other color
-            else:
+        for now_map in self.topomap_robot1frame_dict.values():
+            if now_map == None:
+                continue
+            for vertex in now_map.vertex:
                 if isinstance(vertex, Vertex):
                     marker_message = set_marker(robot_name, markerid, vertex.pose, color=main_vertex_color, scale=0.5)
                 else:
                     marker_message = set_marker(robot_name, markerid, vertex.pose, color=support_vertex_color, scale=0.4)
-            marker_array.markers.append(marker_message)
-            markerid += 1
+                
+                marker_array.markers.append(marker_message)
+                markerid += 1
         
         #visualize edge
         #可视化edge就是把两个vertex的pose做一个连线
         main_edge_color = (self.vis_color[3][0], self.vis_color[3][1], self.vis_color[3][2])
         edge_array = MarkerArray()
-        for edge in self.map.edge:
-            num_count = 0
-            poses = []
-            for vertex in self.map.vertex:
-                # find match
-                if (edge.link[0][0]==vertex.robot_name and edge.link[0][1]==vertex.id) or (edge.link[1][0]==vertex.robot_name and edge.link[1][1]==vertex.id):
-                    poses.append(vertex.pose)
-                    num_count += 1
-                if num_count == 2:
-                    edge_message = set_edge(robot_name, edge.id, poses, "edge",main_edge_color, scale=0.1)
-                    edge_array.markers.append(edge_message)
-                    break
+        now_edge_id = 0
+        for now_map in self.topomap_robot1frame_dict.values():
+            if now_map == None:
+                continue
+            for edge in now_map.edge:
+                poses = []
+                poses.append(now_map.vertex[edge.link[0][1]].pose)
+                poses.append(now_map.vertex[edge.link[1][1]].pose)
+                edge_message = set_edge(robot_name, now_edge_id, poses, "edge",main_edge_color, scale=0.1,frame_name = "/map")
+                now_edge_id += 1
+                edge_array.markers.append(edge_message)
+        
         self.marker_pub.publish(marker_array)
         self.edge_pub.publish(edge_array)
 
@@ -872,128 +871,96 @@ class RobotNode:
         update_robot_center = False
         self.ready_for_topo_map = False
         Topomap = MessageToTopomap(topomap_message)
-        matched_vertex = list()
+        if len(Topomap.vertex) ==0: # don't have any vertex in this map
+            return
+        now_robot_name = Topomap.vertex[0].robot_name
+        self.topomap_dict[now_robot_name] = copy.deepcopy(Topomap)
+        
 
         # find max matched vertex
         for vertex in Topomap.vertex:
             if isinstance(vertex, Support_Vertex):
                 continue
-            if vertex.robot_name==self.self_robot_name or vertex.id in self.matched_vertex_dict[vertex.robot_name]:
-                # already added vertex or vertex belong to this robot
-                pass
-            else:
-                max_score = 0
-                max_index = -1
-                for index2, svertex in enumerate(self.map.vertex):#match vertex
-                    if isinstance(svertex, Support_Vertex):
-                        continue
-                    if svertex.robot_name == vertex.robot_name:#created by same robot
-                            pass
-                    else:
-                        score = np.dot(vertex.descriptor.T, svertex.descriptor)
-                        if score > self.topomap_matched_score and score > max_score:
-                            max_index = index2
-                            max_score = score
-
-                # if matched calculated relative pose
-                if max_score > 0:
-                    now_matched_vertex = self.map.vertex[max_index]
-                    print("matched: now robot = ", now_matched_vertex.robot_name, now_matched_vertex.id,"; target robot = ", vertex.robot_name, vertex.id, score)
-                    if vertex.robot_name not in self.meeted_robot:
-                        self.meeted_robot.append(vertex.robot_name)
-                    self.matched_vertex_dict[vertex.robot_name].append(vertex.id)
-                    #estimate relative position
-                    #请求一下图片
-                    self.image_data_sub  = rospy.Subscriber(vertex.robot_name+"/relative_pose_est_image", ImageWithPointCloudMsg, self.receive_image_callback)
-                    req_string = self.self_robot_name[-1] +" "+vertex.robot_name[-1]+" "+str(vertex.id)
-                    while not self.image_ready:
-                        # 发布请求图片的消息
-                        self.image_req_publisher.publish(req_string)
-                        rospy.sleep(0.1)
-                    #unsubscrib image topic 
-                    self.image_data_sub.unregister()
-                    self.image_data_sub = None
-                    self.image_ready = 0
-
-                    img1 = now_matched_vertex.local_image
-                    img2 = self.relative_pose_image #from other robot
-
-                    #use local map
-                    # pc1_image = svertex.localMap
-                    # half_img_width = int(pc1_image.shape[0]/2)
-
-                    # x1, y1 = np.where((pc1_image > 90) & (pc1_image < 110))
-                    # x2_y2 = np.array(self.relative_pose_pc).reshape((2,-1))
-
-                    # pc1 = np.vstack((x1 - half_img_width, y1 - half_img_width, np.zeros(x1.shape,dtype=float))) * self.map_resolution
-                    # pc2 = np.vstack((x2_y2, np.zeros(x2_y2.shape[1],dtype=float))) * self.map_resolution
-                    
-                    #use local laser scan
-                    x2_y2 = np.array(self.relative_pose_pc).reshape((2,-1))
-                    local_laserscan_angle = now_matched_vertex.local_laserscan_angle
-                    valid_indices = np.isfinite(local_laserscan_angle)
-                    local_laserscan  = np.array(local_laserscan_angle * self.laser_scan_cos_sin)[:,valid_indices]
-                    pc1 = np.vstack((local_laserscan, np.zeros(local_laserscan.shape[1],dtype=float)))
-                    pc2 = np.vstack((x2_y2, np.zeros(x2_y2.shape[1],dtype=float)))
-                    #save result
-                    if save_result:
-                        tmp = (pc1, pc2)
-                        cv2.imwrite(debug_path+self.self_robot_name + "_self"+str(now_matched_vertex.id)+".jpg", img1)
-                        cv2.imwrite(debug_path+self.self_robot_name + "_received"+str(now_matched_vertex.id)+".jpg", img2)
-                        np.savez(debug_path + self.self_robot_name + 'pc_data'+ str(now_matched_vertex.id)+'.npz', *tmp)
-                    #estimated pose
-                    pose = planar_motion_calcu_mulit(img1,img2,k1 = self.K_mat,k2 = self.K_mat,cam_pose = self.cam_trans, pc1=pc1,pc2=pc2)
-                    print("estimated pose is:\n",pose)
-                    if pose is None:
-                        continue
-                    print("vertex id and pose:\n",vertex.id,"  ",vertex.pose)
-                    self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,now_matched_vertex.pose,list(vertex.pose),pose])
-                    
-                    matched_vertex.append(vertex)
-
-                    #add edge between meeted two robot
-                    tmp_link = [[now_matched_vertex.robot_name, now_matched_vertex.id], [vertex.robot_name, vertex.id]]
-                    self.map.edge.append(Edge(id=self.map.edge_id, link=tmp_link))
-                    self.map.edge_id += 1
-                    #estimate the center of other robot     
-                    update_robot_center = True
-       
-        if update_robot_center:
-            self.topo_optimize()
-            for edge in Topomap.edge:
-                if edge.link[0][1] in self.vertex_dict[edge.link[0][0]]:
-                    if edge.link[1][1] in self.vertex_dict[edge.link[1][0]] or edge.link[1][0]==self.self_robot_name:
+            max_score = 0
+            max_index = -1
+            for index2, svertex in enumerate(self.map.vertex):#match vertex
+                if isinstance(svertex, Support_Vertex):
+                    continue
+                if svertex.robot_name == vertex.robot_name:#created by same robot
                         pass
-                    else:
-                        edge.id = self.map.edge_id
-                        self.map.edge_id += 1
-                        self.map.edge.append(edge)
-                elif edge.link[1][1] in self.vertex_dict[edge.link[1][0]]:
-                    if edge.link[0][1] in self.vertex_dict[edge.link[0][0]] or edge.link[0][0]==self.self_robot_name:
-                        pass
-                    else:
-                        edge.id = self.map.edge_id
-                        self.map.edge_id += 1
-                        self.map.edge.append(edge)
                 else:
-                    edge.id = self.map.edge_id
-                    self.map.edge_id += 1
-                    self.map.edge.append(edge)
-            for vertex in Topomap.vertex:
-                #add vertex
-                if vertex.id not in self.vertex_dict[vertex.robot_name] and vertex.robot_name != self.self_robot_name:
-                    now_robot_map_frame_rot = self.map_frame_pose[vertex.robot_name][0]
-                    now_robot_map_frame_trans = self.map_frame_pose[vertex.robot_name][1]
-                    tmp_pose = now_robot_map_frame_rot @ np.array([vertex.pose[0],vertex.pose[1],0]) + now_robot_map_frame_trans
-                    vertex.pose = list(vertex.pose)
-                    vertex.pose[0] = tmp_pose[0]
-                    vertex.pose[1] = tmp_pose[1]
-                    self.map.vertex.append(vertex)
-                    self.map.vertex_id +=1
-                    self.vertex_dict[vertex.robot_name].append(vertex.id)
+                    score = np.dot(vertex.descriptor.T, svertex.descriptor)
+                    if score > self.topomap_matched_score and score > max_score:
+                        max_index = index2
+                        max_score = score
+
+            if max_score > 0:
+                final_R, final_t = self.single_estimation(vertex,self.map.vertex[max_index])
+            
+                if final_R is None or final_t is None:
+                    return
+                else:
+                    estimated_pose = [final_t[0][0],final_t[1][0], math.atan2(final_R[1,0],final_R[0,0])/math.pi*180]
+                    if vertex.id not in self.matched_vertex_dict[vertex.robot_name]:
+                        self.matched_vertex_dict[vertex.robot_name].append(vertex.id) 
+                        # pose optimize
+                        self.estimated_vertex_pose.append([self.self_robot_name, vertex.robot_name,self.map.vertex[max_index].pose,list(vertex.pose),estimated_pose])
+                        if now_robot_name not in self.meeted_robot:
+                            self.meeted_robot.append(now_robot_name)
+                        print("--------TOPO OPT----------")
+                        self.topo_optimize()
+                        # self.update_vertex_pose()
+                        self.init_map_pose = True
+                        
+        #保存转换过相对位姿的两个地图
+        if now_robot_name in self.map_frame_pose.keys():
+            #perform map merge
+            tmp_topomap = copy.deepcopy(Topomap)
+            #change frame
+            tmp_topomap.change_topomap_frame(self.map_frame_pose[now_robot_name]) #转换两个地图
+            self.topomap_robot1frame_dict[now_robot_name] = tmp_topomap
         
         self.ready_for_topo_map = True
-        
+
+
+    def angle_laser_to_xy(self, laser_angle):
+        # input: laser_angle : 1*n array
+        # output: laser_xy : 2*m array with no nan
+        angle_min = 0
+        angle_increment = 0.017501922324299812
+        laser_cos = np.cos(angle_min + angle_increment * np.arange(len(laser_angle)))
+        laser_sin = np.sin(angle_min + angle_increment * np.arange(len(laser_angle)))
+        laser_scan_cos_sin = np.stack([laser_cos, laser_sin])
+        valid_indices = np.isfinite(laser_angle)
+        laser_xy  = np.array(laser_angle * laser_scan_cos_sin)[:,valid_indices]
+        return laser_xy   
+    
+    def single_estimation(self,vertex1,vertex2):
+        #vertex1: received map 
+        #vertex2: vertex of robot 1
+        #return a 3x3 rotation matrix and a 3x1 tranform vector
+        vertex_laser = vertex1.local_laserscan_angle
+        now_laser = vertex2.local_laserscan_angle
+        #do ICP to recover the relative pose
+        now_laser_xy = self.angle_laser_to_xy(now_laser)
+        vertex_laser_xy = self.angle_laser_to_xy(vertex_laser)
+
+        pc1 = np.vstack((now_laser_xy, np.zeros(now_laser_xy.shape[1])))
+        pc2 = np.vstack((vertex_laser_xy, np.zeros(vertex_laser_xy.shape[1])))
+
+        processed_source = o3d.geometry.PointCloud()
+        pc2_offset = copy.deepcopy(pc2)
+        pc2_offset[2,:] -= 0.1
+        processed_source.points = o3d.utility.Vector3dVector(np.vstack([pc2.T,pc2_offset.T]))
+
+        processed_target = o3d.geometry.PointCloud()
+        pc1_offset = copy.deepcopy(pc1)
+        pc1_offset[2,:] -= 0.1
+        processed_target.points = o3d.utility.Vector3dVector(np.vstack([pc1.T,pc1_offset.T]))
+
+        final_R, final_t = ransac_icp(processed_source, processed_target, None, vis=0)
+
+        return final_R, final_t
 
 
     def trajectory_length_callback(self, data):
@@ -1061,7 +1028,7 @@ class RobotNode:
         #     poses_optimized = np.array([[0,0,0],[-7,-7,0]])
         for i in range(0,now_meeted_robot_num):
             now_meeted_robot_pose = poses_optimized[1+i,:]
-            print("---------------Robot Center Optimized-----------------------\n")
+            print("---------------Robot Center Optimized-----------------------")
             print(self.self_robot_name,"estimated robot pose of ", self.meeted_robot[i],now_meeted_robot_pose)
             self.map_frame_pose[self.meeted_robot[i]] = list()
             self.map_frame_pose[self.meeted_robot[i]].append(R.from_euler('z', now_meeted_robot_pose[2], degrees=True).as_matrix()) 

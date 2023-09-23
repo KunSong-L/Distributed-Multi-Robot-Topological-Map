@@ -12,7 +12,7 @@ def TopomapToMessage(Topomap):
             vertexmsg = VertexMsg()
             vertexmsg.robot_name = Topomap.vertex[i].robot_name
             vertexmsg.id = Topomap.vertex[i].id
-            vertexmsg.pose = Topomap.vertex[i].pose 
+            vertexmsg.pose = Topomap.vertex[i].pose
             vertexmsg.local_free_space_rect = Topomap.vertex[i].local_free_space_rect 
             vertexmsg.descriptor = Topomap.vertex[i].descriptor.tolist()
             vertexmsg.rot_descriptor = Topomap.vertex[i].local_laserscan_angle.tolist()
@@ -21,7 +21,7 @@ def TopomapToMessage(Topomap):
             vertexmsg = SupportVertexMsg()
             vertexmsg.robot_name = Topomap.vertex[i].robot_name
             vertexmsg.id = Topomap.vertex[i].id
-            vertexmsg.pose = Topomap.vertex[i].pose 
+            vertexmsg.pose = Topomap.vertex[i].pose
             vertexmsg.local_free_space_rect = Topomap.vertex[i].local_free_space_rect 
             topomap_message.support_vertex.append(vertexmsg)
 
@@ -54,7 +54,7 @@ def MessageToTopomap(topomap_message):
             vertex = Vertex()
             vertex.robot_name = topomap_message.vertex[vertex_index].robot_name
             vertex.id = topomap_message.vertex[vertex_index].id
-            vertex.pose = topomap_message.vertex[vertex_index].pose
+            vertex.pose = list(topomap_message.vertex[vertex_index].pose)
             vertex.local_free_space_rect = topomap_message.vertex[vertex_index].local_free_space_rect
             vertex.descriptor = np.asarray(topomap_message.vertex[vertex_index].descriptor)
             vertex.local_laserscan_angle = np.asarray(topomap_message.vertex[vertex_index].rot_descriptor)
@@ -66,7 +66,7 @@ def MessageToTopomap(topomap_message):
             vertex = Support_Vertex()
             vertex.robot_name = topomap_message.support_vertex[support_vertex_index].robot_name
             vertex.id = topomap_message.support_vertex[support_vertex_index].id
-            vertex.pose = topomap_message.support_vertex[support_vertex_index].pose
+            vertex.pose = list(topomap_message.support_vertex[support_vertex_index].pose)
             vertex.local_free_space_rect = topomap_message.support_vertex[support_vertex_index].local_free_space_rect
             Topomap.vertex.append(vertex)
             support_vertex_index+=1

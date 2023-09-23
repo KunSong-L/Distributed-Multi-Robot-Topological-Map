@@ -1,25 +1,25 @@
 <launch>
 
   <arg name="model" default="burger"/>
-  <node name="rviz1" pkg="rviz" type="rviz" args="-d $(find self_topoexplore)/rviz/topoexplore.rviz" />
-  <node name="rviz2" pkg="rviz" type="rviz" args="-d $(find self_topoexplore)/rviz/topoexplore_two.rviz" />
+  <node name="rviz1" pkg="rviz" type="rviz" args="-d $(find multi_fht_map)/rviz/topoexplore1.rviz" />
+  <node name="rviz2" pkg="rviz" type="rviz" args="-d $(find multi_fht_map)/rviz/topoexplore2.rviz" />
 
 
-  <node name="map_building1" pkg="self_topoexplore" type="robot.py" output="screen">
-    <param name="network" value="gl18-tl-resnet101-gem-w" />
+  <node name="map_building1" pkg="multi_fht_map" type="robot_multi.py" output="screen">
+    <param name="network" value="retrievalSfM120k-vgg16-gem" />
     <param name="platform" value="cuda" />
     <param name="robot_name" value="robot1"/>
     <param name="robot_num" value="2"/>
   </node>
 
-  <node name="map_building2" pkg="self_topoexplore" type="robot.py" output="screen">
-    <param name="network" value="gl18-tl-resnet101-gem-w" />
+  <node name="map_building2" pkg="multi_fht_map" type="robot_multi.py" output="screen">
+    <param name="network" value="retrievalSfM120k-vgg16-gem" />
     <param name="platform" value="cuda" />
     <param name="robot_name" value="robot2"/>
     <param name="robot_num" value="2"/>
   </node>
 
-  <node name="experiment" pkg="self_topoexplore" type="experiment.py" output="screen">
+  <node name="experiment" pkg="multi_fht_map" type="experiment.py" output="screen">
     <param name="robot_num" value="2"/>
   </node>
 
