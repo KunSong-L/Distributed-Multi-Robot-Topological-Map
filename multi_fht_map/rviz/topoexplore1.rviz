@@ -8,7 +8,7 @@ Panels:
         - /Status1
         - /TF1/Frames1
       Splitter Ratio: 0.6617646813392639
-    Tree Height: 270
+    Tree Height: 1666
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -253,34 +253,8 @@ Visualization Manager:
           Value: true
         robot1/wheel_right_link:
           Value: true
-        robot2/base_camera1:
-          Value: true
-        robot2/base_camera2:
-          Value: true
-        robot2/base_camera3:
-          Value: true
-        robot2/base_camera4:
-          Value: true
-        robot2/base_footprint:
-          Value: true
-        robot2/base_link:
-          Value: true
-        robot2/base_scan:
-          Value: true
-        robot2/caster_back_link:
-          Value: true
-        robot2/imu_link:
-          Value: true
-        robot2/map:
-          Value: true
-        robot2/odom:
-          Value: true
-        robot2/wheel_left_link:
-          Value: true
-        robot2/wheel_right_link:
-          Value: true
       Marker Alpha: 1
-      Marker Scale: 1
+      Marker Scale: 5
       Name: TF
       Show Arrows: true
       Show Axes: true
@@ -336,6 +310,34 @@ Visualization Manager:
         "": true
       Queue Size: 100
       Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/LaserScan
+      Color: 255; 255; 255
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Min Color: 0; 0; 0
+      Name: LaserScan
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.009999999776482582
+      Style: Points
+      Topic: /robot1/scan
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
@@ -364,7 +366,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 43.15199279785156
+      Distance: 49.494415283203125
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -372,9 +374,9 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 3.2391836643218994
-        Y: 0.026247503235936165
-        Z: 0.48305436968803406
+        X: -2.0974230766296387
+        Y: 1.2507843971252441
+        Z: 0.47769859433174133
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

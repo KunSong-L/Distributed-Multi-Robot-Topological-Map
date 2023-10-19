@@ -9,6 +9,7 @@ import torchvision
 
 from utils.imageretrieval.normalization import L2N
 from utils.imageretrieval.pooling import MAC, SPoC, GeM, GeMmp, RMAC, Rpool
+# from utils.model import STN3d, STNkd, PointNetfeat, PointNetCls, PointNetDenseCls, PointNet_est
 
 # for some models, we have imported features (convolutions) from caffe because the image retrieval performance is higher for them
 FEATURES = {
@@ -267,3 +268,11 @@ def init_network(params):
         net.features.load_state_dict(model_zoo.load_url(FEATURES[architecture], model_dir=model_dir))
 
     return net
+
+
+# def init_point_net(path):
+#     # path for the param of the model
+#     model = torch.load(path)
+#     # 将模型设置为评估模式
+#     model.eval()
+#     return model

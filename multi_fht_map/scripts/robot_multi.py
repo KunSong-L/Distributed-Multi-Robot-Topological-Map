@@ -18,6 +18,7 @@ from self_topoexplore.msg import TopoMapMsg
 from self_topoexplore.msg import ImageWithPointCloudMsg
 from TopoMap import Support_Vertex, Vertex, Edge, TopologicalMap
 from utils.imageretrieval.imageretrievalnet import init_network
+from utils.pointnet_model import PointNet_est
 from utils.imageretrieval.extract_feature import cal_feature
 from utils.topomap_bridge import TopomapToMessage, MessageToTopomap
 from utils.astar import grid_path, topo_map_path
@@ -59,9 +60,14 @@ class RobotNode:
             state = load_url(PRETRAINED[network], model_dir= os.path.join(path, "data/networks"))
         else:
             state = torch.load(network)
-        net_params = get_net_param(state)
         torch.cuda.empty_cache()
-        self.net = init_network(net_params)
+        current_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+        point_net_path = os.path.join(current_path,'../data/networks', 'my_pointnet_20231016151924.pth') # Load PointNet
+        self.pointnet =  PointNet_est(k=3)
+        self.pointnet.load_state_dict(torch.load(point_net_path))  #load param of network
+        self.pointnet.eval()
+        net_params = get_net_param(state)
+        self.net = init_network(net_params)#Load Image Retrivial
         self.net.load_state_dict(state['state_dict'])
         self.net.cuda(self.network_gpu)
         self.net.eval()
@@ -104,7 +110,6 @@ class RobotNode:
         self.vertex_dict = dict()
         self.vertex_dict[self.self_robot_name] = list()
         self.matched_vertex_dict = dict()
-        self.now_feature = np.array([])
         self.adj_list = dict()#拓扑地图到邻接矩阵
         self.meeted_robot = list()
         self.potential_main_vertex = list()
@@ -130,7 +135,6 @@ class RobotNode:
         self.rotation = None
         
         #relative pose estimation
-        self.image_req_sub = rospy.Subscriber('/request_image', String, self.receive_image_req_callback)
         self.image_data_sub = None
         self.relative_pose_image = None
         self.relative_pose_pc = None
@@ -171,8 +175,10 @@ class RobotNode:
             robot_name+"/goal", PoseStamped, queue_size=1)
         self.panoramic_view_pub = rospy.Publisher(
             robot_name+"/panoramic", Image, queue_size=1)
-        self.topomap_pub = rospy.Publisher(
-            robot_name+"/topomap", TopoMapMsg, queue_size=1)
+        if robot_name != "robot1":#other robot publish topomap
+            self.topomap_pub = rospy.Publisher(
+                robot_name+"/topomap", TopoMapMsg, queue_size=1)
+        
         self.start_pub = rospy.Publisher(
             "/start_exp", String, queue_size=1) #发一个start
         self.frontier_publisher = rospy.Publisher(robot_name+'/frontier_points', Marker, queue_size=1)
@@ -188,7 +194,6 @@ class RobotNode:
             for robot in robot_list:
                 rospy.Subscriber(
                     robot+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1, buff_size=52428800)
-        
         rospy.Subscriber(
             robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
         rospy.Subscriber(
@@ -209,10 +214,26 @@ class RobotNode:
             self.laser_scan_cos_sin = np.stack([laser_cos, laser_sin])
             self.laser_scan_init = True
         
-        valid_indices = np.isfinite(ranges)
-        self.local_laserscan  = np.array(ranges[valid_indices] * self.laser_scan_cos_sin[:,valid_indices])
+        # valid_indices = np.isfinite(ranges)
+        # self.local_laserscan  = np.array(ranges[valid_indices] * self.laser_scan_cos_sin[:,valid_indices])
+        # self.local_laserscan  = np.array(ranges * self.laser_scan_cos_sin)
+        # a = np.sum(self.local_laserscan[:,valid_indices]**2,axis=0)**0.5
         self.local_laserscan_angle = ranges
 
+
+    def heat_value_eval(self):
+        # evluate now laser scan data using point net
+        local_laserscan_angle = copy.deepcopy(self.local_laserscan_angle )
+        valid_indices = np.isfinite(local_laserscan_angle)
+        local_laserscan_angle[~valid_indices] = 8
+        local_laserscan  = np.array(local_laserscan_angle* self.laser_scan_cos_sin)
+        now_laserscan = np.vstack((local_laserscan,np.zeros(local_laserscan.shape[1])))
+        lidar_data_torch = torch.tensor(now_laserscan).float()
+        lidar_data_torch = lidar_data_torch.view((-1,3,360))
+        self.pointnet.to('cpu')
+        output = self.pointnet(lidar_data_torch).detach().numpy().reshape(-1)[0]
+
+        return output
 
     def create_panoramic_callback(self, image1, image2, image3, image4):
         #合成一张全景图片然后发布
@@ -238,33 +259,6 @@ class RobotNode:
         pc = image_pc.lidar_point
         self.relative_pose_pc = pc
 
-
-    def receive_image_req_callback(self, req):
-        #req: i_j_id
-        input_list = req.data.split()  # 将字符串按照空格分割成一个字符串列表
-        if input_list[1] in self.self_robot_name:
-            # publish image msg
-            img_pc_msg = ImageWithPointCloudMsg()
-            image_index = int(input_list[2])
-            req_image = self.map.vertex[image_index].local_image
-            header = Header(stamp=rospy.Time.now())
-            image_msg = self.cv_bridge.cv2_to_imgmsg(req_image, encoding="mono8")
-            image_msg.header = header
-
-            #use real laser scan for icp
-            local_laserscan_angle = self.map.vertex[image_index].local_laserscan_angle
-            valid_indices = np.isfinite(local_laserscan_angle)
-            local_laserscan  = np.array(local_laserscan_angle * self.laser_scan_cos_sin)[:,valid_indices]
-            x = local_laserscan[0,:]
-            y = local_laserscan[1,:]
-
-            pc =  np.concatenate((x, y)).tolist()
-            img_pc_msg.image = image_msg
-            img_pc_msg.lidar_point = pc
-            self.image_data_pub.publish(img_pc_msg) #finish publish message
-
-
-            print("robot = ",self.self_robot_name,"  publish image index = ",image_index)
 
 
     def visulize_vertex(self):
@@ -398,32 +392,150 @@ class RobotNode:
         return frontier_poses[max_index]
 
 
+
+    def update_robot_pose(self):
+        # ----get now pose----  
+        #tracking map->base_footprint
+        tmptimenow = rospy.Time.now()
+        self.tf_listener2.waitForTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow, rospy.Duration(0.5))
+        try:
+            self.tf_transform, self.rotation = self.tf_listener2.lookupTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow)
+            self.tf_transform_ready = 1
+            self.pose[0] = self.tf_transform[0]
+            self.pose[1] = self.tf_transform[1]
+            self.pose[2] = R.from_quat(self.rotation).as_euler('xyz', degrees=True)[2]
+
+            if self.init_map_angle_ready == 0:
+                self.map_angle = self.pose[2]
+                self.map.offset_angle = self.map_angle
+                self.init_map_angle_ready = 1
+        except:
+            pass
+    
+    def finish_exploration(self):
+        print("----------Robot Exploration Finished!-----------")
+        self.map.vertex[-1].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[-1].pose[0:2], self.map_origin, self.map_resolution)
+        self.visulize_vertex()
+        process = subprocess.Popen( "rosbag record -o /home/master/topomap.bag /robot1/topomap /robot1/map", shell=True) #change to your file path
+        time.sleep(5)
+        # 发送SIGINT信号给进程，让它结束记录
+        os.kill(process.pid, signal.SIGINT)
+        print("----------FHT-Map Record Finished!-----------")
+        print("----------You can use this map for navigation now!-----------")
+        self.finish_explore = True
+    
+    def map_panoramic_callback(self, panoramic):
+        start_msg = String()
+        start_msg.data = "Start!"
+        self.start_pub.publish(start_msg)
+        self.update_robot_pose() #update robot pose
+        
+        current_pose = copy.deepcopy(self.pose)
+        panoramic_view = self.cv_bridge.imgmsg_to_cv2(panoramic, desired_encoding="rgb8")
+        
+        
+        #check whether the robot stop moving
+        if not self.finish_explore and len(self.total_frontier) == 0: 
+            self.finish_exploration()
+            
+        create_a_vertex_flag = self.create_a_vertex(panoramic_view) # whether create a vertex
+        if create_a_vertex_flag: # create a vertex
+            if create_a_vertex_flag == 1:#create a main vertex
+                omega_ch = np.array([1,2]) 
+                ch_list = []
+                for  now_vertex in self.potential_main_vertex:
+                    C_now = now_vertex[1][0]
+                    H_now = now_vertex[1][1]
+                    ch_list.append([C_now, H_now])
+                
+                total_ch = np.array(ch_list)
+                z_star = np.max(total_ch,axis=0)
+                total_ch_minus_z = total_ch - z_star
+                weighted_ch = omega_ch * total_ch_minus_z
+                infinite_norm_weighted_ch = np.max(weighted_ch,axis=1)
+                best_index = np.argmax(infinite_norm_weighted_ch)
+                vertex = copy.deepcopy(self.potential_main_vertex[best_index][0])
+                self.last_vertex_id, self.current_node = self.map.add(vertex)
+                self.potential_main_vertex = []
+                
+            elif create_a_vertex_flag == 2 or create_a_vertex_flag == 3:#create a support vertex
+                vertex = Support_Vertex(robot_name, id=-1, pose=current_pose)
+                self.last_vertex_id, self.current_node = self.map.add(vertex)
+            # add rect to vertex
+            if self.last_vertex_id > 0:
+                self.map.vertex[-2].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[-2].pose[0:2], self.map_origin, self.map_resolution)
+            #create edge
+            self.create_edge()
+
+            self.vertex_map_ready = True
+            while self.grid_map_ready==0 or self.tf_transform_ready==0:
+                time.sleep(0.5)
+            self.vertex_dict[self.self_robot_name].append(vertex.id)
+            self.change_goal()
+            
+            if create_a_vertex_flag ==1 or create_a_vertex_flag ==2: 
+                refine_topo_map_msg = String()
+                refine_topo_map_msg.data = "Start_find_path!"
+                self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path
+        
     def create_a_vertex(self,panoramic_view):
         #return 1 for uncertainty value reach th; 2 for not a free space line
         #and 0 for don't creat a vertex
 
-        #check whether create a main vertex
-        uncertainty_value = 0
-        
-        main_vertex_dens = 7 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
+        #important parameter
+        feature_simliar_th = 0.94
+        main_vertex_dens = 25 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good; sigma_c in paper
         global_vertex_dens = 2 # create a support vertex large than 2 meter
+        
+        # check the heat map value of this point
+        local_laserscan_angle = copy.deepcopy(self.local_laserscan_angle)
+        heat_map_value = self.heat_value_eval()
+        now_feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
+
+        max_sim = 0
+        C_now = 0#calculate C
         now_pose = np.array(self.pose[0:2])
         for now_vertex in self.map.vertex:
             if isinstance(now_vertex, Support_Vertex):
                 continue
+            now_similarity = np.dot(now_feature.T, now_vertex.descriptor)
+            max_sim = max(now_similarity,max_sim)
             now_vertex_pose = np.array(now_vertex.pose[0:2])
             dis = np.linalg.norm(now_vertex_pose - now_pose)
             # print(now_vertex.descriptor_infor)
-            uncertainty_value += now_vertex.descriptor_infor * np.exp(-dis**2 / main_vertex_dens)
-        if uncertainty_value > 0.57:
-            self.potential_main_vertex = list()
-        else:
-            self.now_feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
-            gray_local_img = cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY)
-            vertex = Vertex(robot_name, id=-1, pose=copy.deepcopy(self.pose), descriptor=copy.deepcopy(self.now_feature), local_image=gray_local_img, local_laserscan_angle=copy.deepcopy(self.local_laserscan_angle))
-            self.potential_main_vertex.append(vertex) 
-            if uncertainty_value <0.368:
-                #evaluate vertex information
+            C_now += now_vertex.descriptor_infor * np.exp(-dis**2 / main_vertex_dens)
+
+        #similarity smaller than th
+        if max_sim < feature_simliar_th:          
+            #calculate H
+            H_now = heat_map_value
+            
+            #判断是否位于parote optimal front
+            #self.potential_main_vertex: [[vertex,[C,H]],...]
+            remove_list = []
+            on_pareto_optimal_front_flag = True
+            for index, now_vertex in enumerate(self.potential_main_vertex):
+                old_C = now_vertex[1][0]
+                old_H = now_vertex[1][1]
+
+                #C: 取min; H： 取max
+                if old_C < C_now and old_H > H_now:#dominated by old vertex
+                    on_pareto_optimal_front_flag = False
+                    break
+                if old_C > C_now and old_H < H_now:#dominates old vertex
+                    remove_list.append(index)
+            if on_pareto_optimal_front_flag:#更新最优点
+                new_potential_vertex = [value for i, value in enumerate(self.potential_main_vertex) if i not in remove_list]
+                gray_local_img = cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY)
+                vertex = Vertex(robot_name, id=-1, pose=copy.deepcopy(self.pose), descriptor=copy.deepcopy(now_feature), local_image=gray_local_img, local_laserscan_angle=local_laserscan_angle)
+                new_potential_vertex.append([vertex,[C_now,H_now]])
+                self.potential_main_vertex = new_potential_vertex
+            
+            # print("len of potential vertex list:", len(self.potential_main_vertex))
+        
+        if C_now < 0.368:
+            # create a main vertex
+            if len(self.potential_main_vertex) != 0:
                 return 1
 
         #check wheter create a supportive vertex
@@ -457,83 +569,6 @@ class RobotNode:
         
         return 0
 
-
-    def update_robot_pose(self):
-        # ----get now pose----  
-        #tracking map->base_footprint
-        tmptimenow = rospy.Time.now()
-        self.tf_listener2.waitForTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow, rospy.Duration(0.5))
-        try:
-            self.tf_transform, self.rotation = self.tf_listener2.lookupTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow)
-            self.tf_transform_ready = 1
-            self.pose[0] = self.tf_transform[0]
-            self.pose[1] = self.tf_transform[1]
-            self.pose[2] = R.from_quat(self.rotation).as_euler('xyz', degrees=True)[2]
-
-            if self.init_map_angle_ready == 0:
-                self.map_angle = self.pose[2]
-                self.map.offset_angle = self.map_angle
-                self.init_map_angle_ready = 1
-        except:
-            pass
-    
-
-    def map_panoramic_callback(self, panoramic):
-        start_msg = String()
-        start_msg.data = "Start!"
-        self.start_pub.publish(start_msg)
-        self.update_robot_pose() #update robot pose
-        
-        current_pose = copy.deepcopy(self.pose)
-        panoramic_view = self.cv_bridge.imgmsg_to_cv2(panoramic, desired_encoding="rgb8")
-        
-        create_a_vertex_flag = self.create_a_vertex(panoramic_view)
-        #check whether the robot stop moving
-        if not self.finish_explore and len(self.total_frontier) == 0: 
-            print("----------Robot Exploration Finished!-----------")
-            self.map.vertex[-1].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[-1].pose[0:2], self.map_origin, self.map_resolution)
-            self.visulize_vertex()
-            process = subprocess.Popen( "rosbag record -o /home/master/topomap.bag /robot1/topomap /robot1/map", shell=True) #change to your file path
-            time.sleep(5)
-            # 发送SIGINT信号给进程，让它结束记录
-            os.kill(process.pid, signal.SIGINT)
-            print("----------FHT-Map Record Finished!-----------")
-            print("----------You can use this map for navigation now!-----------")
-            self.finish_explore = True
-            
-        
-        if create_a_vertex_flag: # create a vertex
-            if create_a_vertex_flag == 1:#create a main vertex
-                max_infor_index = 0
-                max_infor = 0
-                for index, now_vertex in enumerate(self.potential_main_vertex):
-                    if now_vertex.descriptor_infor > max_infor:
-                        max_infor_index = index
-                        max_infor = now_vertex.descriptor_infor
-                vertex = copy.deepcopy(self.potential_main_vertex[max_infor_index])
-                self.last_vertex_id, self.current_node = self.map.add(vertex)
-                
-            elif create_a_vertex_flag == 2 or create_a_vertex_flag == 3:#create a support vertex
-                vertex = Support_Vertex(robot_name, id=-1, pose=current_pose)
-                self.last_vertex_id, self.current_node = self.map.add(vertex)
-            # add rect to vertex
-            if self.last_vertex_id > 0:
-                self.map.vertex[-2].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[-2].pose[0:2], self.map_origin, self.map_resolution)
-            #create edge
-            self.create_edge()
-
-            self.vertex_map_ready = True
-            while self.grid_map_ready==0 or self.tf_transform_ready==0:
-                time.sleep(0.5)
-            self.vertex_dict[self.self_robot_name].append(vertex.id)
-            self.change_goal()
-            
-            if create_a_vertex_flag ==1 or create_a_vertex_flag ==2: 
-                refine_topo_map_msg = String()
-                refine_topo_map_msg.data = "Start_find_path!"
-                self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path
-        
-    
     def find_better_path_callback(self,data):
         #start compare distance between grid map and topo map
         #estimate distance in topo map
@@ -751,7 +786,8 @@ class RobotNode:
 
         if len(self.map.vertex) != 0:
             topomap_message = TopomapToMessage(self.map)
-            self.topomap_pub.publish(topomap_message) # publish topomap important!
+            if self.self_robot_name != 'robot1':    
+                self.topomap_pub.publish(topomap_message) # publish topomap important!
 
         if self.vertex_map_ready:
             self.visulize_vertex()
@@ -866,8 +902,9 @@ class RobotNode:
 
     def topomap_callback(self, topomap_message):
         # receive topomap from other robots
-        if not self.ready_for_topo_map:
-            return
+        # 原始的topomap储存在self.topomap_dict下
+        # 变换过相对位姿关系的topomap储存在self.topomap_robot1frame_dict下
+
         update_robot_center = False
         self.ready_for_topo_map = False
         Topomap = MessageToTopomap(topomap_message)
@@ -896,7 +933,6 @@ class RobotNode:
 
             if max_score > 0:
                 final_R, final_t = self.single_estimation(vertex,self.map.vertex[max_index])
-            
                 if final_R is None or final_t is None:
                     return
                 else:
@@ -920,8 +956,6 @@ class RobotNode:
             tmp_topomap.change_topomap_frame(self.map_frame_pose[now_robot_name]) #转换两个地图
             self.topomap_robot1frame_dict[now_robot_name] = tmp_topomap
         
-        self.ready_for_topo_map = True
-
 
     def angle_laser_to_xy(self, laser_angle):
         # input: laser_angle : 1*n array

@@ -406,7 +406,7 @@ class RobotNode:
         #check whether create a main vertex
         uncertainty_value = 0
         
-        main_vertex_dens = 7 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
+        main_vertex_dens = 25 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
         global_vertex_dens = 2 # create a support vertex large than 2 meter
         now_pose = np.array(self.pose[0:2])
         for now_vertex in self.map.vertex:
