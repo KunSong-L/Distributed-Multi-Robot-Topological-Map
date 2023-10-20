@@ -30,11 +30,11 @@ class robot_expore:
         self.current_loc_pixel = [0,0]
         self.erro_count = 0
         self.goal = np.array([])
-
         self.grid_map_ready = 0
         self.tf_transform_ready = 0
         self.map_resolution = float(rospy.get_param('map_resolution', 0.05))
         self.map_origin = [0,0]
+        self.allow_robot_move = False # robot will start explore until receive an alow move flag
         
         self.vis_color = np.array([[0xFF, 0x7F, 0x51], [0xD6, 0x28, 0x28],[0xFC, 0xBF, 0x49],[0x00, 0x30, 0x49],[0x1E, 0x90, 0xFF]])/255.0
         # get tf
@@ -43,19 +43,17 @@ class robot_expore:
         self.tf_transform = None
         self.rotation = None
         #move base
-        self.actoinclient = actionlib.SimpleActionClient(robot_name+'/move_base', MoveBaseAction)
+        self.actoinclient = actionlib.SimpleActionClient(self.self_robot_name+'/move_base', MoveBaseAction)
         
         self.total_frontier = np.array([],dtype=float).reshape(-1,2)
         self.finish_explore = False
 
-        self.goal_pub = rospy.Publisher(robot_name+"/goal", PoseStamped, queue_size=1)
+        self.goal_pub = rospy.Publisher(self.self_robot_name+"/goal", PoseStamped, queue_size=1)
 
-        self.frontier_publisher = rospy.Publisher(robot_name+'/frontier_points', Marker, queue_size=1)
-        rospy.Subscriber(
-            robot_name+"/map", OccupancyGrid, self.map_grid_callback, queue_size=1)
+        self.frontier_publisher = rospy.Publisher(self.self_robot_name+'/frontier_points', Marker, queue_size=1)
+        rospy.Subscriber(self.self_robot_name+"/map", OccupancyGrid, self.map_grid_callback, queue_size=1)
 
-        rospy.Subscriber(
-            robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
+        rospy.Subscriber(self.self_robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
 
 
         self.actoinclient.wait_for_server()
@@ -63,6 +61,8 @@ class robot_expore:
     def change_goal(self):
         # move goal:now_pos + basic_length+offset;  now_angle + nextmove
         if len(self.total_frontier) == 0:
+            return
+        if not self.allow_robot_move:
             return
         move_goal = self.choose_exp_goal()
         goal_message, self.goal = self.get_move_goal(self.self_robot_name,move_goal )#offset = 0
@@ -128,9 +128,9 @@ class robot_expore:
         # ----get now pose----  
         #tracking map->base_footprint
         tmptimenow = rospy.Time.now()
-        self.tf_listener2.waitForTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow, rospy.Duration(0.5))
+        self.tf_listener2.waitForTransform(self.self_robot_name+"/map", self.self_robot_name+"/base_footprint", tmptimenow, rospy.Duration(0.5))
         try:
-            self.tf_transform, self.rotation = self.tf_listener2.lookupTransform(robot_name+"/map", robot_name+"/base_footprint", tmptimenow)
+            self.tf_transform, self.rotation = self.tf_listener2.lookupTransform(self.self_robot_name+"/map", self.self_robot_name+"/base_footprint", tmptimenow)
             self.tf_transform_ready = 1
             self.pose[0] = self.tf_transform[0]
             self.pose[1] = self.tf_transform[1]
@@ -165,7 +165,7 @@ class robot_expore:
         # ----------visualize frontier------------
         frontier_marker = Marker()
         now = rospy.Time.now()
-        frontier_marker.header.frame_id = robot_name + "/map"
+        frontier_marker.header.frame_id = self.self_robot_name + "/map"
         frontier_marker.header.stamp = now
         frontier_marker.ns = "frontier_point"
         frontier_marker.type = Marker.POINTS
@@ -194,9 +194,9 @@ class robot_expore:
         shape = (data.info.height, data.info.width)
         timenow = rospy.Time.now()
         #robot1/map->robot1/base_footprint
-        self.tf_listener.waitForTransform(data.header.frame_id, robot_name+"/base_footprint", timenow, rospy.Duration(0.5))
+        self.tf_listener.waitForTransform(data.header.frame_id, self.self_robot_name+"/base_footprint", timenow, rospy.Duration(0.5))
 
-        tf_transform, rotation = self.tf_listener.lookupTransform(data.header.frame_id, robot_name+"/base_footprint", timenow)
+        tf_transform, rotation = self.tf_listener.lookupTransform(data.header.frame_id, self.self_robot_name+"/base_footprint", timenow)
         self.current_loc_pixel = [0,0]
         #data origin position = -13, -12, 0
         self.current_loc_pixel[0] = int((tf_transform[1] - data.info.origin.position.y)/data.info.resolution)
@@ -228,6 +228,7 @@ class robot_expore:
             cv2.imwrite(debug_path+self.self_robot_name +"_global_map.jpg", self.global_map)
 
     def move_base_status_callback(self, data):
+        self.update_robot_pose()
         try:
             status = data.status_list[-1].status
         # print(status)
