@@ -1,7 +1,7 @@
 <launch>
 
   <arg name="model" default="burger"/>
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find multi_fht_map)/rviz/topoexplore1.rviz" />
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find multi_fht_map)/rviz/fhtmap1.rviz" />
 
 
   <node name="map_building" pkg="multi_fht_map" type="robot_multi.py" output="screen">

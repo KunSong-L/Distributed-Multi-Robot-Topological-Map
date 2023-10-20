@@ -6,10 +6,10 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /TF1
         - /TF1/Frames1
-        - /Map2
       Splitter Ratio: 0.7176470756530762
-    Tree Height: 1666
+    Tree Height: 270
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -168,7 +168,7 @@ Visualization Manager:
       Marker Topic: /robot2/visualization/edge
       Name: MarkerArray
       Namespaces:
-        topological_map: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/TF
@@ -177,59 +177,59 @@ Visualization Manager:
       Frames:
         All Enabled: false
         robot1/base_camera1:
-          Value: true
+          Value: false
         robot1/base_camera2:
-          Value: true
+          Value: false
         robot1/base_camera3:
-          Value: true
+          Value: false
         robot1/base_camera4:
-          Value: true
+          Value: false
         robot1/base_footprint:
-          Value: true
+          Value: false
         robot1/base_link:
-          Value: true
+          Value: false
         robot1/base_scan:
-          Value: true
+          Value: false
         robot1/caster_back_link:
-          Value: true
+          Value: false
         robot1/imu_link:
-          Value: true
+          Value: false
         robot1/map:
-          Value: true
+          Value: false
         robot1/odom:
-          Value: true
+          Value: false
         robot1/wheel_left_link:
-          Value: true
+          Value: false
         robot1/wheel_right_link:
-          Value: true
+          Value: false
         robot2/base_camera1:
-          Value: true
+          Value: false
         robot2/base_camera2:
-          Value: true
+          Value: false
         robot2/base_camera3:
-          Value: true
+          Value: false
         robot2/base_camera4:
-          Value: true
+          Value: false
         robot2/base_footprint:
           Value: true
         robot2/base_link:
-          Value: true
+          Value: false
         robot2/base_scan:
-          Value: true
+          Value: false
         robot2/caster_back_link:
-          Value: true
+          Value: false
         robot2/imu_link:
-          Value: true
+          Value: false
         robot2/map:
-          Value: true
+          Value: false
         robot2/odom:
           Value: true
         robot2/wheel_left_link:
-          Value: true
+          Value: false
         robot2/wheel_right_link:
-          Value: true
+          Value: false
       Marker Alpha: 1
-      Marker Scale: 1
+      Marker Scale: 5
       Name: TF
       Show Arrows: true
       Show Axes: true
@@ -282,12 +282,12 @@ Visualization Manager:
       Marker Topic: /robot2/vertex_free_space
       Name: MarkerArray
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
   Global Options:
-    Background Color: 238; 238; 236
+    Background Color: 255; 255; 255
     Default Light: true
     Fixed Frame: robot2/map
     Frame Rate: 30
@@ -313,7 +313,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 44.15555191040039
+      Distance: 32.73804473876953
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -321,17 +321,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 1.8902982473373413
-        Y: 5.053440570831299
-        Z: 0.4441148340702057
+        X: -0.5618897080421448
+        Y: 2.564363479614258
+        Z: 0.46178555488586426
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5447962284088135
+      Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
-      Yaw: 3.1304125785827637
+      Yaw: 3.150416612625122
     Saved: ~
 Window Geometry:
   Displays:

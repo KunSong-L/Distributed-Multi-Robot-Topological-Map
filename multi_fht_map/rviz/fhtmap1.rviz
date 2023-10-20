@@ -6,6 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /TF1
         - /TF1/Frames1
       Splitter Ratio: 0.6617646813392639
     Tree Height: 1666
@@ -228,31 +229,57 @@ Visualization Manager:
       Frames:
         All Enabled: false
         robot1/base_camera1:
-          Value: true
+          Value: false
         robot1/base_camera2:
-          Value: true
+          Value: false
         robot1/base_camera3:
-          Value: true
+          Value: false
         robot1/base_camera4:
-          Value: true
+          Value: false
         robot1/base_footprint:
           Value: true
         robot1/base_link:
-          Value: true
+          Value: false
         robot1/base_scan:
-          Value: true
+          Value: false
         robot1/caster_back_link:
-          Value: true
+          Value: false
         robot1/imu_link:
-          Value: true
+          Value: false
         robot1/map:
-          Value: true
+          Value: false
         robot1/odom:
           Value: true
         robot1/wheel_left_link:
-          Value: true
+          Value: false
         robot1/wheel_right_link:
-          Value: true
+          Value: false
+        robot2/base_camera1:
+          Value: false
+        robot2/base_camera2:
+          Value: false
+        robot2/base_camera3:
+          Value: false
+        robot2/base_camera4:
+          Value: false
+        robot2/base_footprint:
+          Value: false
+        robot2/base_link:
+          Value: false
+        robot2/base_scan:
+          Value: false
+        robot2/caster_back_link:
+          Value: false
+        robot2/imu_link:
+          Value: false
+        robot2/map:
+          Value: false
+        robot2/odom:
+          Value: false
+        robot2/wheel_left_link:
+          Value: false
+        robot2/wheel_right_link:
+          Value: false
       Marker Alpha: 1
       Marker Scale: 5
       Name: TF
@@ -366,7 +393,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 49.494415283203125
+      Distance: 32.2928466796875
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -374,17 +401,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -2.0974230766296387
-        Y: 1.2507843971252441
-        Z: 0.47769859433174133
+        X: -1.0410106182098389
+        Y: 2.250553607940674
+        Z: 0.483938992023468
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5697963237762451
+      Pitch: 1.5647963285446167
       Target Frame: <Fixed Frame>
-      Yaw: 3.1253836154937744
+      Yaw: 3.1303837299346924
     Saved: ~
 Window Geometry:
   Displays:
