@@ -201,7 +201,7 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
     # print("RANSAC MATCHED Ratio: %f"%(ransac_match_ratio))
 
     if ransac_match_ratio < 0.5:
-        print("RANSCA not matched")
+        # print("RANSCA not matched")
         if total_time == max_intertation:
             print("failed Reason:\n",failed_reason)
         return None, None

@@ -6,16 +6,10 @@ from sensor_msgs.msg import Image, LaserScan
 import rospkg
 import tf
 from std_msgs.msg import String
-from nav_msgs.msg import OccupancyGrid
 from visualization_msgs.msg import Marker, MarkerArray
-from geometry_msgs.msg import Twist, PoseStamped, Point
 from laser_geometry import LaserProjection
 import message_filters
-import actionlib
-from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from actionlib_msgs.msg import GoalStatusArray
 from self_topoexplore.msg import TopoMapMsg
-from self_topoexplore.msg import ImageWithPointCloudMsg
 from TopoMap import Support_Vertex, Vertex, Edge, TopologicalMap
 from utils.imageretrieval.imageretrievalnet import init_network
 from utils.pointnet_model import PointNet_est
@@ -29,12 +23,10 @@ import os
 import cv2
 from cv_bridge import CvBridge
 import numpy as np
-from queue import Queue
 from scipy.spatial.transform import Rotation as R
 import math
 import time
 import copy
-from std_msgs.msg import Header
 from robot_function import *
 from RelaPose_2pc_function import *
 
@@ -43,6 +35,8 @@ import scipy.ndimage
 import signal
 
 from robot_explore import *
+from multi_robot_expore import *
+
 
 debug_path = "/home/master/debug/test1/"
 save_result = False
@@ -52,8 +46,6 @@ class RobotNode:
         rospack = rospkg.RosPack()
         self.self_robot_name = robot_name
         path = rospack.get_path('multi_fht_map')
-        # in simulation environment each robot has same intrinsic matrix
-        self.K_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
         #network part
         network = rospy.get_param("~network")
         self.network_gpu = rospy.get_param("~platform")
@@ -67,6 +59,7 @@ class RobotNode:
         self.pointnet =  PointNet_est(k=3)
         self.pointnet.load_state_dict(torch.load(point_net_path))  #load param of network
         self.pointnet.eval()
+
         net_params = get_net_param(state)
         self.net = init_network(net_params)#Load Image Retrivial
         self.net.load_state_dict(state['state_dict'])
@@ -181,6 +174,8 @@ class RobotNode:
 
     def heat_value_eval(self):
         # evluate now laser scan data using point net
+        if len(self.local_laserscan_angle) == 0:
+            return 0
         local_laserscan_angle = copy.deepcopy(self.local_laserscan_angle )
         valid_indices = np.isfinite(local_laserscan_angle)
         local_laserscan_angle[~valid_indices] = 8
@@ -237,8 +232,10 @@ class RobotNode:
                 marker.pose.orientation.y = ori_map[1]
                 marker.pose.orientation.z = ori_map[2]
                 marker.pose.orientation.w = ori_map[3]
-                marker.scale.x = abs(x2 - x1)
-                marker.scale.y = abs(y2 - y1)
+                tmp = now_map.rotation.T @ np.array([x2-x1,y2-y1,0])
+                
+                marker.scale.x = abs(tmp[0])
+                marker.scale.y = abs(tmp[1])
                 marker.scale.z = 0.03 # 指定平面的厚度
                 marker.color.r = now_vis_color[5][0]
                 marker.color.g = now_vis_color[5][1]
@@ -372,10 +369,15 @@ class RobotNode:
             self.vertex_dict[self.self_robot_name].append(vertex.id)
             
             topomap_message = TopomapToMessage(self.map)
-            if self.self_robot_name != 'robot1':    
-                self.topomap_pub.publish(topomap_message) # publish topomap important!
-                
             self.visulize_vertex()
+            if self.self_robot_name != 'robot1':    
+                self.topomap_pub.publish(topomap_message) # publish topomap important!      
+            else:     
+                print('start recons local free space')
+                test_vis = multi_robot_expore(robot_num)
+                test_vis.fht_map_multi = self.topomap_robot1frame_dict
+                rect_image, new_origin = test_vis.topo_recon_local_free_space(self.exploration.global_map,self.exploration.map_origin)
+
             self.exploration.allow_robot_move = True #allow robot to move
             if create_a_vertex_flag ==1 or create_a_vertex_flag ==2: 
                 refine_topo_map_msg = String()
@@ -390,7 +392,6 @@ class RobotNode:
         feature_simliar_th = 0.94
         main_vertex_dens = 25 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good; sigma_c in paper
         global_vertex_dens = 2 # create a support vertex large than 2 meter
-        
         # check the heat map value of this point
         local_laserscan_angle = copy.deepcopy(self.local_laserscan_angle)
         heat_map_value = self.heat_value_eval()
@@ -708,7 +709,7 @@ class RobotNode:
         laser_sin = np.sin(angle_min + angle_increment * np.arange(len(laser_angle)))
         laser_scan_cos_sin = np.stack([laser_cos, laser_sin])
         valid_indices = np.isfinite(laser_angle)
-        laser_xy  = np.array(laser_angle * laser_scan_cos_sin)[:,valid_indices]
+        laser_xy  = np.array(laser_angle[valid_indices] * laser_scan_cos_sin[:,valid_indices])
         return laser_xy   
     
     def single_estimation(self,vertex1,vertex2):
@@ -794,7 +795,7 @@ class RobotNode:
         #     poses_optimized = np.array([[0,0,0],[-7,-7,0]])
         for i in range(0,now_meeted_robot_num):
             now_meeted_robot_pose = poses_optimized[1+i,:]
-            print("---------------Robot Center Optimized-----------------------")
+            # print("---------------Robot Center Optimized-----------------------")
             print(self.self_robot_name,"estimated robot pose of ", self.meeted_robot[i],now_meeted_robot_pose)
             self.map_frame_pose[self.meeted_robot[i]] = list()
             self.map_frame_pose[self.meeted_robot[i]].append(R.from_euler('z', now_meeted_robot_pose[2], degrees=True).as_matrix()) 

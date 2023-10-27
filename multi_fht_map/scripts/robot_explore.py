@@ -218,7 +218,7 @@ class robot_expore:
             pass
         self.grid_map_ready = 1
         self.update_frontier()
-        self.change_goal()
+        self.change_goal() #更换前沿点
         self.visulize_vertex()
         #保存图片
         if save_result:
