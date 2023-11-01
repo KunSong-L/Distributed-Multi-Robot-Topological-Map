@@ -7,16 +7,14 @@ from geometry_msgs.msg import  PoseStamped, Point
 import actionlib
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from actionlib_msgs.msg import GoalStatusArray
-import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import time
 import copy
 from robot_function import *
-
+from multi_fht_map.srv import frontierSRV, frontierSRVRequest, frontierSRVResponse
 
 debug_path = "/home/master/debug/test1/"
-save_result = False
 
 class robot_expore:
     def __init__(self, robot_name):#输入当前机器人name
@@ -61,8 +59,6 @@ class robot_expore:
     def change_goal(self):
         # move goal:now_pos + basic_length+offset;  now_angle + nextmove
         if len(self.total_frontier) == 0:
-            return
-        if not self.allow_robot_move:
             return
         move_goal = self.choose_exp_goal()
         goal_message, self.goal = self.get_move_goal(self.self_robot_name,move_goal )#offset = 0
@@ -217,22 +213,18 @@ class robot_expore:
         except:
             pass
         self.grid_map_ready = 1
-        self.update_frontier()
-        self.change_goal() #更换前沿点
+        self.update_frontier() #更新前沿点
+
+        if not self.allow_robot_move:
+            self.change_goal() #如果不允许机器人运动，则不主动更换前沿点
+
         self.visulize_vertex()
-        #保存图片
-        if save_result:
-            temp = self.global_map[max(self.current_loc_pixel[0]-range,0):min(self.current_loc_pixel[0]+range,shape[0]), max(self.current_loc_pixel[1]-range,0):min(self.current_loc_pixel[1]+range, shape[1])]
-            temp[np.where(temp==-1)] = 125
-            cv2.imwrite(debug_path+self.self_robot_name + "_local_map.jpg", temp)
-            cv2.imwrite(debug_path+self.self_robot_name +"_global_map.jpg", self.global_map)
 
     def move_base_status_callback(self, data):
         self.update_robot_pose()
         try:
             status = data.status_list[-1].status
         # print(status)
-        
             if status >= 3:
                 self.erro_count +=1
             if self.erro_count >= 3:
@@ -266,7 +258,22 @@ class robot_expore:
         for index, frontier in enumerate(self.total_frontier):
             if self.is_explored_frontier(frontier):
                 delete_index.append(index)
-        self.total_frontier = np.delete(self.total_frontier, delete_index, axis = 0)
+        tmp_total_frontier = np.delete(self.total_frontier, delete_index, axis = 0)
+
+        #publish frontier to update service
+        rospy.wait_for_service('update_frontier_server') #所有机器人都进行前沿点的删除
+        try:
+            update_frontier = rospy.ServiceProxy('update_frontier_server', frontierSRV)
+            request = frontierSRVRequest()
+            request.frontier = copy.deepcopy(tmp_total_frontier).reshape(-1).tolist()
+            request.robotname = self.self_robot_name
+            response = update_frontier(request)
+            frontier_index = response.is_frontier
+            self.total_frontier = tmp_total_frontier[frontier_index]
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: {}".format(e))
+        
+        self.change_goal()#每次收到前沿点之后更新目标
 
         #goal in map frame
         now_goal = self.goal
@@ -277,18 +284,16 @@ class robot_expore:
             if np.any(np.abs(temp_map - 100) < 40):
                 # print("Target near obstacle! Change another goal!")
                 self.change_goal()
-            
             expored_range = 1
             temp_map = self.global_map[frontier_position[1]-expored_range:frontier_position[1]+expored_range+1, frontier_position[0]-expored_range:frontier_position[0]+expored_range+1]
             if np.logical_not(np.any(temp_map == 255)):
                 # print("Target is an explored point! Change another goal!")
                 self.change_goal()
 
+
 if __name__ == '__main__':
     time.sleep(3)
     rospy.init_node('robot_explore')
     robot_name = rospy.get_param("~robot_name")
-
     node = robot_expore(robot_name)
-
     rospy.spin()

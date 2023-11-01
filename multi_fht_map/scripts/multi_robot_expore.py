@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import time
 from robot_function import *
-
+from multi_fht_map.srv import frontierSRV, frontierSRVRequest, frontierSRVResponse
 
 debug_path = "/home/master/debug/test1/"
 save_result = False
@@ -18,6 +18,8 @@ class multi_robot_expore:
         
         self.fht_map_multi = dict()
         self.free_space_map = None
+        self.free_space_origin = [0,0]
+        rospy.Service('update_frontier_server', frontierSRV, self.process_frontier_callback)
 
     def from_local_rect_to_4_point(self,rect,origin,resolution,rotation_mat,angle):
         #rect: [x1,y1,x2,y2]
@@ -40,7 +42,7 @@ class multi_robot_expore:
         return box
 
 
-    def topo_recon_local_free_space(self,origin_map_shape, origin,resolution=0.05):
+    def topo_recon_local_free_space(self,origin_map, origin,resolution=0.05):
         #reconstruction of local free space of multi-FHT-Map
         # origin_map_shape: 2*1
         # origin: origin of the map 2*1
@@ -49,7 +51,7 @@ class multi_robot_expore:
 
         # 创建一个空白图像，与要填充的矩形大小相同
         #将多个机器人的地图重建到robot 1
-        image_shape = origin_map_shape
+        image_shape = origin_map.shape
         origin = np.array(origin)
         #寻找最大最小的坐标
         minU = 0
@@ -86,7 +88,8 @@ class multi_robot_expore:
         #更新origin
         new_origin = np.array([origin[0] - padding[0]*resolution, origin[1] - padding[2]*resolution])
         image = np.full(new_image_shape,255, dtype=np.uint8) #可能尺寸不够
-        
+        image[padding[2]:image_shape[0]+padding[2],padding[0]:image_shape[1]+padding[0]] = copy.deepcopy(origin_map)
+
         for now_robot in self.robot_list:
             if now_robot in self.fht_map_multi.keys():
                 nowFhtMap = self.fht_map_multi[now_robot]
@@ -110,11 +113,58 @@ class multi_robot_expore:
         # cv2.imshow("Filled Rectangle", image)
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
-        cv2.imwrite(debug_path+"filled_rectangle.jpg", image)
+        # cv2.imwrite(debug_path+"filled_rectangle.jpg", image)
 
-        return image, new_origin
+        self.free_space_map = image
+        self.free_space_origin = new_origin
 
 
+    def process_frontier_callback(self,request):
+        tmp = np.array(request.frontier)
+        frontier_pose = tmp.reshape((-1,2))
+        
+        now_robot = request.robotname
+        #check whether is a explored frontier
+        n_point = frontier_pose.shape[0]
+        response = frontierSRVResponse()
+        if self.free_space_map is None or self.fht_map_multi[now_robot] is None:#没构建free space map或者没匹配上
+            response.is_frontier = [True for i in range(n_point)]
+            return response
+        else:
+            #change frontier to robot1 frame
+            map_rotation = self.fht_map_multi[now_robot].rotation
+            map_trans = self.fht_map_multi[now_robot].trans_vector
+            frontier_pose = np.hstack((frontier_pose,np.zeros((n_point,1))))
+            changed_pose = (map_rotation @ frontier_pose.T + map_trans.reshape((-1,1))).T
+            #以前用的代码，现在不用for循环加速处理了
+            # result = []
+            # for frontier in changed_pose:
+            #     is_explored = self.is_explored_frontier(frontier)
+            #     result.append(not is_explored)
+            tmp = ((changed_pose[:,0:2]-self.free_space_origin)/0.05).astype(int)
+            global_map = self.free_space_map
+            on_image_index = np.logical_and.reduce([tmp[:,1]>=0,tmp[:,1]< global_map.shape[0],tmp[:,0]>=0,tmp[:,0]< global_map.shape[1]])
+            result = np.logical_not(on_image_index)
+            on_image_pose = tmp[on_image_index]
+            explored_index = global_map[on_image_pose[:,1],on_image_pose[:,0]]!=0#已经被探索过的下标
+            result[on_image_index] = explored_index
+            response.is_frontier = result.tolist()
+            return response
+
+    def is_explored_frontier(self,pose_in_world):
+        #input pose in world frame
+        map_res = 0.05
+        map_origin = self.free_space_origin
+        global_map =  self.free_space_map
+
+        frontier_position = np.array([int((pose_in_world[0] -map_origin[0])/map_res), int((pose_in_world[1] - map_origin[1])/map_res)])
+        if frontier_position[1]<0 or frontier_position[1] > global_map.shape[0]-1 or frontier_position[0]<0 or frontier_position[0] > global_map.shape[1]-1:
+            return False
+        elif global_map[frontier_position[1],frontier_position[0]]==0:
+            return True
+        else:#没探索
+            return False
+     
 if __name__ == '__main__':
     time.sleep(3)
     rospy.init_node('multi_robot_expore')

@@ -1,0 +1,4 @@
+float32[] frontier
+string robotname
+---
+bool[] is_frontier

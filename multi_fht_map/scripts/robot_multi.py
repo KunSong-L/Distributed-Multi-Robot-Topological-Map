@@ -145,6 +145,8 @@ class RobotNode:
         rospy.Subscriber(robot_name+"/panoramic", Image, self.map_panoramic_callback, queue_size=1)
         #only robot1 subscribe all vertex
         if robot_name == "robot1":
+            #for robot1, perform multi robot exploration 
+            self.multi_expolore_node = multi_robot_expore(robot_num)
             for robot in robot_list:
                 rospy.Subscriber(robot+"/topomap", TopoMapMsg, self.topomap_callback, queue_size=1, buff_size=52428800)
         rospy.Subscriber(robot_name+"/scan", LaserScan, self.laserscan_callback, queue_size=1)
@@ -312,12 +314,12 @@ class RobotNode:
         print("----------Robot Exploration Finished!-----------")
         self.map.vertex[-1].local_free_space_rect  = find_local_max_rect(self.exploration.global_map, self.map.vertex[-1].pose[0:2], self.exploration.map_origin, self.exploration.map_resolution)
         self.visulize_vertex()
-        process = subprocess.Popen( "rosbag record -o /home/master/topomap.bag /robot1/topomap /robot1/map", shell=True) #change to your file path
-        time.sleep(5)
-        # 发送SIGINT信号给进程，让它结束记录
-        os.kill(process.pid, signal.SIGINT)
-        print("----------FHT-Map Record Finished!-----------")
-        print("----------You can use this map for navigation now!-----------")
+        # process = subprocess.Popen( "rosbag record -o /home/master/topomap.bag /robot1/topomap /robot1/map", shell=True) #change to your file path
+        # time.sleep(5)
+        # # 发送SIGINT信号给进程，让它结束记录
+        # os.kill(process.pid, signal.SIGINT)
+        # print("----------FHT-Map Record Finished!-----------")
+        # print("----------You can use this map for navigation now!-----------")
         self.finish_explore = True
     
     def map_panoramic_callback(self, panoramic):
@@ -368,15 +370,14 @@ class RobotNode:
                 time.sleep(0.5)
             self.vertex_dict[self.self_robot_name].append(vertex.id)
             
-            topomap_message = TopomapToMessage(self.map)
             self.visulize_vertex()
-            if self.self_robot_name != 'robot1':    
+            if self.self_robot_name != 'robot1':
+                topomap_message = TopomapToMessage(self.map)    
                 self.topomap_pub.publish(topomap_message) # publish topomap important!      
             else:     
-                print('start recons local free space')
-                test_vis = multi_robot_expore(robot_num)
-                test_vis.fht_map_multi = self.topomap_robot1frame_dict
-                rect_image, new_origin = test_vis.topo_recon_local_free_space(self.exploration.global_map,self.exploration.map_origin)
+                self.multi_expolore_node.fht_map_multi = self.topomap_robot1frame_dict
+                self.multi_expolore_node.topo_recon_local_free_space(self.exploration.global_map,self.exploration.map_origin)
+                
 
             self.exploration.allow_robot_move = True #allow robot to move
             if create_a_vertex_flag ==1 or create_a_vertex_flag ==2: 
@@ -453,7 +454,7 @@ class RobotNode:
             last_vertex_pose_pixel = ( last_vertex_pose- map_origin)/self.exploration.map_resolution
             if isinstance(last_vertex, Support_Vertex):
                 # free_line_flag = self.free_space_line(last_vertex_pose_pixel, now_robot_pose)
-                free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, 1)
+                free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, 3)
             else:   
                 free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, 5)
             
@@ -698,6 +699,7 @@ class RobotNode:
             #change frame
             tmp_topomap.change_topomap_frame(self.map_frame_pose[now_robot_name]) #转换两个地图
             self.topomap_robot1frame_dict[now_robot_name] = tmp_topomap
+            self.visulize_vertex()
         
 
     def angle_laser_to_xy(self, laser_angle):

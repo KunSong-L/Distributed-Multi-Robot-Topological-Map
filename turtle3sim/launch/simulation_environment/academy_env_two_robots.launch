@@ -34,7 +34,7 @@
         <include file="$(find turtlebot3sim)/launch/includes/robot.launch.xml">
             <arg name="robot_name" value="robot2"/>
             <arg name="model" value="$(arg model)"/>
-            <arg name="init_pose" value="-x 6 -y -5.0 -z 0.0 -Y 1.047"/>
+            <arg name="init_pose" value="-x 6 -y -5.0 -z 0.0 -Y 1.57"/>
         </include>
     </group>
 
