@@ -29,7 +29,7 @@ options = {
 }
 
 MAP_BUILDER.use_trajectory_builder_2d = true
-TRAJECTORY_BUILDER_2D.submaps.num_range_data = 20
+TRAJECTORY_BUILDER_2D.submaps.num_range_data = 20 --90个lidar建立一个子图, default 90
 
 TRAJECTORY_BUILDER_2D.min_range = 0.1
 TRAJECTORY_BUILDER_2D.max_range = 7
@@ -40,6 +40,7 @@ TRAJECTORY_BUILDER_2D.motion_filter.max_angle_radians = math.rad(0.1)
 
 POSE_GRAPH.constraint_builder.min_score = 0.8
 POSE_GRAPH.constraint_builder.global_localization_min_score = 0.80
-
+POSE_GRAPH.constraint_builder.sampling_ratio = 0.1 --子图采样频率
+POSE_GRAPH.optimize_every_n_nodes= 40 --180个node优化一次
 
 return options
