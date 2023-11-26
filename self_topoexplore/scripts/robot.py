@@ -366,7 +366,7 @@ class RobotNode:
             dis = np.linalg.norm(now_vertex_pose - now_pose)
             # print(now_vertex.descriptor_infor)
             uncertainty_value += now_vertex.descriptor_infor * np.exp(-dis**2 / main_vertex_dens)
-        if uncertainty_value > 0.57:
+        if uncertainty_value > 0.61:
             self.potential_main_vertex = list()
         else:
             self.now_feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
@@ -482,7 +482,7 @@ class RobotNode:
             self.vertex_dict[self.self_robot_name].append(vertex.id)
             self.change_goal()
             
-            if create_a_vertex_flag ==1 or create_a_vertex_flag ==2: 
+            if create_a_vertex_flag ==1 or create_a_vertex_flag ==2 or create_a_vertex_flag ==3: 
                 refine_topo_map_msg = Int32()
                 refine_topo_map_msg.data = int(self.last_vertex_id)
                 self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path

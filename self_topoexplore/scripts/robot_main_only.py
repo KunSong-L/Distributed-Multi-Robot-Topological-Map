@@ -357,7 +357,7 @@ class RobotNode:
                 expaned_line_width = 5
             last_vertex_pose_pixel = ( last_vertex_pose- map_origin)/self.map_resolution
 
-            free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, expaned_line_width)
+            free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, expaned_line_width,True)
             
             if free_line_flag:
                 break
@@ -486,11 +486,11 @@ class RobotNode:
                         self.map.edge.append(Edge(id=self.map.edge_id, link=link))
                         self.map.edge_id += 1
         
-        if create_edge_num == 0:
-            now_vertex = self.map.vertex[-2]
-            link = [[now_vertex.robot_name, now_vertex.id], [self.current_node.robot_name, self.current_node.id]]
-            self.map.edge.append(Edge(id=self.map.edge_id, link=link))
-            self.map.edge_id += 1
+        # if create_edge_num == 0:
+        #     now_vertex = self.map.vertex[-2]
+        #     link = [[now_vertex.robot_name, now_vertex.id], [self.current_node.robot_name, self.current_node.id]]
+        #     self.map.edge.append(Edge(id=self.map.edge_id, link=link))
+        #     self.map.edge_id += 1
 
 
     def change_goal(self):
@@ -698,7 +698,7 @@ class RobotNode:
                     return False
         return True
 
-    def free_space_line(self,point1,point2):
+    def free_space_line(self,point1,point2,check_connect_flag = False):
         # check whether a line cross a free space
         # point1 and point2 in pixel frame
         now_global_map = self.global_map
@@ -716,11 +716,14 @@ class RobotNode:
             x = int(x1 + i * step_x)
             y = int(y1 + i * step_y)
             if x < 0 or x >= width or y < 0 or y >= height or now_global_map[y, x] != 0:
-                if now_global_map[y, x] != 255:#排除掉经过unknown的部分
+                if check_connect_flag:
+                    if now_global_map[y, x] != 255:#排除掉经过unknown的部分
+                        return False
+                else:
                     return False
         return True
 
-    def expanded_free_space_line(self,point1,point2, offset_length):
+    def expanded_free_space_line(self,point1,point2, offset_length,check_connect_flag = False):
         x1, y1 = point1
         x2, y2 = point2
         vertical_vector = np.array([y2 - y1, x1 - x2])
@@ -728,7 +731,7 @@ class RobotNode:
         offset_points1 = [point1 + vertical_vector*offset_length, point2 + vertical_vector*offset_length]
         offset_points2 = [point1 - vertical_vector*offset_length, point2 - vertical_vector*offset_length]
 
-        return self.free_space_line(point1, point2) and self.free_space_line(offset_points1[0], offset_points1[1]) and self.free_space_line(offset_points2[0], offset_points2[1])
+        return self.free_space_line(point1, point2,check_connect_flag) and self.free_space_line(offset_points1[0], offset_points1[1],check_connect_flag) and self.free_space_line(offset_points2[0], offset_points2[1],check_connect_flag)
 
 
 if __name__ == '__main__':

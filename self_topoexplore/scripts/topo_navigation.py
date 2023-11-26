@@ -142,29 +142,23 @@ class RobotNode:
         
         if now_env == "large_indoor":
             self.world_map1 = [10,10,0]
-            self.robot_origin = [rospy.get_param("~origin_x"), rospy.get_param("~origin_y"), rospy.get_param("~origin_yaw")]
-            for i in range(3):
-                self.robot_origin[i] = float(self.robot_origin[i])
-            #计算理论值
-            gt_vector = np.array([10-self.robot_origin[0], 10 - self.robot_origin[1]])
-            theta = self.robot_origin[2]
-            gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
-            rot = 0 - np.rad2deg(theta)
-            self.map2_map1 = [gt_2[0],gt_2[1],np.deg2rad(rot)]#原始map在新map坐标系下位置
-            self.map1_map2 = change_frame([0,0,0], self.map2_map1)  
-
-        if now_env == "museum":
+        elif now_env == "museum":
             self.world_map1 = [7,8,1.57]
-            self.robot_origin = [rospy.get_param("~origin_x"), rospy.get_param("~origin_y"), rospy.get_param("~origin_yaw")]
-            for i in range(3):
-                self.robot_origin[i] = float(self.robot_origin[i])
-            #计算理论值
-            gt_vector = np.array([7-self.robot_origin[0], 8 - self.robot_origin[1]])
-            theta = self.robot_origin[2]
-            gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
-            rot = 90 - np.rad2deg(theta)
-            self.map2_map1 = [gt_2[0],gt_2[1],np.deg2rad(rot)]#原始map在新map坐标系下位置
-            self.map1_map2 = change_frame([0,0,0], self.map2_map1)  
+        elif now_env == "large_2_2": 
+            self.world_map1 = [5,5,1.57]
+        elif  now_env == "large_2_4":
+            self.world_map1 = [5,50,1.57]
+        
+        self.robot_origin = [rospy.get_param("~origin_x"), rospy.get_param("~origin_y"), rospy.get_param("~origin_yaw")]
+        for i in range(3):
+            self.robot_origin[i] = float(self.robot_origin[i])
+        #计算理论值
+        gt_vector = np.array([self.world_map1[0]-self.robot_origin[0], self.world_map1[1] - self.robot_origin[1]])
+        theta = self.robot_origin[2]
+        gt_2 = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]).T @ gt_vector
+        rot = np.rad2deg(self.world_map1[2]) - np.rad2deg(theta)
+        self.map2_map1 = [gt_2[0],gt_2[1],np.deg2rad(rot)]#原始map在新map坐标系下位置
+        self.map1_map2 = change_frame([0,0,0], self.map2_map1) 
 
         self.world_map2 = [rospy.get_param("~origin_x"), rospy.get_param("~origin_y"), rospy.get_param("~origin_yaw")]
         #获取目标点
@@ -183,12 +177,6 @@ class RobotNode:
         self.tf_transform = None
         self.rotation = None
         
-        #relative pose estimation
-        x_offset = 0.1
-        y_offset = 0.2
-        self.cam_trans = [[x_offset,0,0],[0,y_offset,math.pi/2],[-x_offset,0.0,math.pi],[0,-y_offset,-math.pi/2]] # camera position
-        self.estimated_vertex_pose = list() #["robot_i","robot_j",id1,id2,estimated_pose] suppose that i < j
-        self.map_frame_pose = dict() # map_frame_pose[robot_j] is [R_j,t_j] R_j 3x3
         self.laser_scan_cos_sin = None
         self.laser_scan_init = False
         self.local_laserscan = None
@@ -266,103 +254,7 @@ class RobotNode:
         image_message.header.frame_id = robot_name+"/odom"
         self.panoramic_view_pub.publish(image_message)
 
-    
-    def convert_numpy_2_pointcloud2_color(self, points, stamp=None, frame_id=None, maxDistColor=None):
-        '''
-        Create a sensor_msgs.PointCloud2 from an array of points. 
-        This function will automatically assign RGB values to each point. The RGB values are
-        determined by the distance of a point from the origin. Use maxDistColor to set the distance 
-        at which the color corresponds to the farthest distance is used.
-        points: A NumPy array of Nx3.
-        stamp: An alternative ROS header stamp.
-        frame_id: The frame id. String.
-        maxDisColor: Should be positive if specified..
-        '''
-        
-        # Clipping input.
-        # dist = np.linalg.norm( points, axis=1 )
-        dist = points[:,2]
-        if ( maxDistColor is not None and maxDistColor > 0):
-            dist = np.clip(dist, 0, maxDistColor)
-
-        # Compose color.
-        DIST_COLORS = [\
-            "#2980b9",\
-            "#27ae60",\
-            "#f39c12",\
-            "#c0392b",\
-            ]
-
-        DIST_COLOR_LEVELS = 50
-        cr, cg, cb = color_map( dist, DIST_COLORS, DIST_COLOR_LEVELS )
-
-        C = np.zeros((cr.size, 4), dtype=np.uint8) + 255
-
-        C[:, 0] = cb.astype(np.uint8)
-        C[:, 1] = cg.astype(np.uint8)
-        C[:, 2] = cr.astype(np.uint8)
-
-        C = C.view("uint32")
-
-        # Structured array.
-        pointsColor = np.zeros( (points.shape[0], 1), \
-            dtype={ 
-                "names": ( "x", "y", "z", "rgba" ), 
-                "formats": ( "f4", "f4", "f4", "u4" )} )
-
-        points = points.astype(np.float32)
-
-        pointsColor["x"] = points[:, 0].reshape((-1, 1))
-        pointsColor["y"] = points[:, 1].reshape((-1, 1))
-        pointsColor["z"] = points[:, 2].reshape((-1, 1))
-        pointsColor["rgba"] = C
-
-        header = Header()
-
-        if stamp is None:
-            header.stamp = rospy.Time().now()
-        else:
-            header.stamp = stamp
-
-        if frame_id is None:
-            header.frame_id = "None"
-        else:
-            header.frame_id = frame_id
-
-        msg = PointCloud2()
-        msg.header = header
-
-        if len(points.shape) == 3:
-            msg.height = points.shape[1]
-            msg.width = points.shape[0]
-        else:
-            msg.height = 1
-            msg.width  = points.shape[0]
-
-        msg.fields = [
-            PointField('x',  0, PointField.FLOAT32, 1),
-            PointField('y',  4, PointField.FLOAT32, 1),
-            PointField('z',  8, PointField.FLOAT32, 1),
-            PointField('rgb', 12, PointField.UINT32, 1),
-            ]
-
-        msg.is_bigendian = False
-        msg.point_step   = 16
-        msg.row_step     = msg.point_step * points.shape[0]
-        msg.is_dense     = int( np.isfinite(points).all() )
-        msg.data         = pointsColor.tostring()
-
-        return msg
-
-    def publish_point_cloud(self):
-        # 初始化ROS节点
-        # 创建PointCloud2消息对象
-        if len(self.navigated_point) <2:
-            return
-        pc_msg = self.convert_numpy_2_pointcloud2_color(self.navigated_point, stamp=None, frame_id=robot_name + "/map", maxDistColor=None)
-        # 创建PointCloud2消息发布者
-        self.pc_pub.publish(pc_msg)
-    
+      
 
     def visulize_vertex(self):
         # ----------visualize frontier------------
@@ -589,7 +481,7 @@ class RobotNode:
                         min_dis = now_dis
                         min_index = i
                 start_in_vertex_index.append(min_index)
-
+                
             #check whether target in free space 
             nav_target_x = self.map1_target[0]
             nav_target_y = self.map1_target[1]
@@ -652,6 +544,7 @@ class RobotNode:
                 #判断是否到达最后一个点
                 final_target = np.array(self.map2_target[0:2])
                 if np.linalg.norm(robot_pose - final_target) < 0.1:#到达最后一个点了
+                    print('goal reached!')
                     return
             else:
                 map_origin = np.array(self.map_origin)
@@ -661,7 +554,7 @@ class RobotNode:
                 height, width = self.global_map.shape
                 x = int(target_vertex_pose_pixel[0])
                 y = int(target_vertex_pose_pixel[1])
-                if x > 0 and x <= width and y > 0 and y <= height and self.global_map[y,x] == 0:
+                if x > 0 and x < width and y > 0 and y < height and self.global_map[y,x] == 0:
                     self.now_target_vertex = -1#如果终点可见，直接去终点
                     final_target = copy.deepcopy(self.map2_target)
                     final_target[2] = np.rad2deg(final_target[2])
@@ -678,14 +571,37 @@ class RobotNode:
                         target_vertex_pose_pixel = (target_pose- map_origin)/self.map_resolution
                         x = int(target_vertex_pose_pixel[0])
                         y = int(target_vertex_pose_pixel[1])
-                        if x > 0 and x <= width and y > 0 and y <= height and self.global_map[y,x] == 0:
+                        if x > 0 and x < width and y > 0 and y < height and self.global_map[y,x] == 0:
                             self.now_target_vertex = i #如果目标可见，直接去目标点
                             find_new_target = True
                             break
                     
+                    #检测当前目标周围是否存在障碍物
+                    if find_new_target == False:
+                        now_target_pose = np.array(self.map.vertex[self.target_topo_path[self.now_target_vertex]].pose[0:2])
+                        now_target_pose = change_frame(now_target_pose, self.map1_map2) # 换到map2
+                        target_vertex_pose_pixel = (now_target_pose- map_origin)/self.map_resolution
+                        x = int(target_vertex_pose_pixel[0])
+                        y = int(target_vertex_pose_pixel[1])
+                        expaned_width = 5
+                        local_map = self.global_map[y-expaned_width:y+expaned_width,x-expaned_width:x+expaned_width]
+                        if np.any(local_map==100):
+                            if self.now_target_vertex == len(self.target_topo_path) - 1:
+                                self.now_target_vertex = -1
+                                final_target = copy.deepcopy(self.map2_target)
+                                final_target[2] = np.rad2deg(final_target[2])
+                                goal_message, self.goal = self.get_move_goal(self.self_robot_name,final_target )#offset = 0
+                                goal_marker = self.get_goal_marker(self.self_robot_name, final_target)
+                                self.actoinclient.send_goal(goal_message)
+                                self.goal_pub.publish(goal_marker)
+                                return
+                            else:
+                                self.now_target_vertex += 1
+                            find_new_target = True
+
                     if not find_new_target:
                         #没有找到新的目标，但是已经到了这一个目标
-                        if target_dis < 0.5:
+                        if target_dis < 1:
                             if self.now_target_vertex == len(self.target_topo_path) - 1: #如果到了最后一个点，那么直接去目标点
                                 self.now_target_vertex = -1
                                 final_target = copy.deepcopy(self.map2_target)

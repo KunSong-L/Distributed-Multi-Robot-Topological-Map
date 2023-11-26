@@ -5,6 +5,7 @@
   <arg name="x_pos" default="-3.0"/>
   <arg name="y_pos" default="1.0"/>
   <arg name="z_pos" default="0.0"/>
+  <arg name="sim_env" default="museum"/>
 
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <arg name="world_name" value="$(find turtlebot3sim)/worlds/Academy.world"/>
@@ -18,8 +19,8 @@
   <arg name="origin_x" value="6"/>
   <arg name="origin_y" value="-7"/>
   <arg name="origin_yaw" value="0"/>
-  <arg name="target_x" value="-8"/>
-  <arg name="target_y" value="2"/>
+  <arg name="target_x" value="7"/>
+  <arg name="target_y" value="8"/>
   <arg name="target_yaw" value="0.0"/>
 
 
@@ -49,14 +50,16 @@
     <param name="target_x" value="$(arg target_x)"/>
     <param name="target_y" value="$(arg target_y)"/>
     <param name="target_yaw" value="$(arg target_yaw)"/>
+    <param name="sim_env" value="$(arg sim_env)"/>
   </node>
 
   <node name="experiment_nav" pkg="self_topoexplore" type="exp_nav.py" output="screen">
       <param name="robot_num" value="1"/>
-      <param name="nav_method" value="main_only"/>
+      <param name="nav_method" value="main_only_49"/>
       <param name="target_x" value="$(arg target_x)"/>
       <param name="target_y" value="$(arg target_y)"/>
       <param name="target_yaw" value="$(arg target_yaw)"/>
+      <param name="sim_env" value="$(arg sim_env)"/>
   </node>
   
 

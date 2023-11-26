@@ -6,10 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /TF1
-        - /Marker3
-        - /PointCloud21
-        - /MarkerArray3
+        - /Pose2
       Splitter Ratio: 0.6617646813392639
     Tree Height: 1740
   - Class: rviz/Selection
@@ -199,12 +196,12 @@ Visualization Manager:
       Class: rviz/Pose
       Color: 239; 41; 41
       Enabled: true
-      Head Length: 0.30000001192092896
-      Head Radius: 0.10000000149011612
+      Head Length: 3
+      Head Radius: 1
       Name: Pose
       Queue Size: 10
       Shaft Length: 1
-      Shaft Radius: 0.05000000074505806
+      Shaft Radius: 0.5
       Shape: Arrow
       Topic: /robot1/goal
       Unreliable: false
@@ -373,7 +370,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 50.09246826171875
+      Distance: 88.28004455566406
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -381,9 +378,9 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 11.7111234664917
-        Y: -3.1335537433624268
-        Z: -1.042175531387329
+        X: 9.861886024475098
+        Y: -32.52994918823242
+        Z: 9.550135612487793
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -391,7 +388,7 @@ Visualization Manager:
       Near Clip Distance: 0.009999999776482582
       Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
-      Yaw: 4.710389614105225
+      Yaw: 3.1453843116760254
     Saved: ~
 Window Geometry:
   Displays:

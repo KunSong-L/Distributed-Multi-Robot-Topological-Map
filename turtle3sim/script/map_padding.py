@@ -42,7 +42,7 @@ class MapPadding:
         map_message.header = map.header
         map_message.info = map.info
         # print("map orientation::", map.info.origin)
-        padding = 10 #跑topoexplore需要给200padding，正常代码给10就行
+        padding = 400 #跑topoexplore需要给200padding，正常代码给10就行
         shape = (map.info.height, map.info.width)
         mapdata = np.asarray(map.data).reshape(shape)
         #evaluate exploration data
