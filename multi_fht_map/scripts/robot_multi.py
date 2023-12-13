@@ -28,7 +28,10 @@ import math
 import time
 import copy
 from robot_function import *
-from RelaPose_2pc_function import *
+# from RelaPose_2pc_function import *
+import open3d as o3d
+import sys
+from ransac_icp import *
 
 import subprocess
 import scipy.ndimage
@@ -198,8 +201,6 @@ class RobotNode:
         img4 = self.cv_bridge.imgmsg_to_cv2(image4, desired_encoding="rgb8")
         panoram = [img1, img2, img3, img4]
         self.panoramic_view = np.hstack(panoram)
-        if save_result:
-            cv.imwrite(debug_path + "/2.png",self.panoramic_view)
         image_message = self.cv_bridge.cv2_to_imgmsg(self.panoramic_view, encoding="rgb8")
         image_message.header.stamp = rospy.Time.now()  
         image_message.header.frame_id = robot_name+"/odom"

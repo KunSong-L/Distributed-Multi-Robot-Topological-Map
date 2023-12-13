@@ -38,4 +38,5 @@
         </include>
     </group>
 
+    <node pkg="tf" type="static_transform_publisher" name="tf_publisher" args="0 -1 0 0 0 0 1 /robot1/map /robot2/map 100" />
 </launch>

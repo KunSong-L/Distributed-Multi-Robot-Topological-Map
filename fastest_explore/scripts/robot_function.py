@@ -360,8 +360,8 @@ def pose_gragh_opt(input, angle_cost = 0):
     return x_optimal
 
 def change_frame(point_1, T_1_2):
-    #根据转换关系把在1坐标系下point转换到1坐标系下
-    #T_1_2：[x,y,yaw]格式
+    #根据转换关系把在1坐标系下point转换到2坐标系下
+    #T_1_2：[x,y,yaw]格式 (T^1_2)
     #point_1: 向量[x,y,yaw]或者[x,y]
     #返回：在2坐标系下的point位置
     input_length = len(point_1)

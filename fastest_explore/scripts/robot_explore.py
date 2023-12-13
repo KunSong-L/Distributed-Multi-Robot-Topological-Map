@@ -7,15 +7,12 @@ from geometry_msgs.msg import  PoseStamped, Point
 import actionlib
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from actionlib_msgs.msg import GoalStatusArray
-import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import time
 import copy
 from robot_function import *
 
-
-debug_path = "/home/master/debug/test1/"
 save_result = False
 
 class RobotNode:
@@ -44,8 +41,8 @@ class RobotNode:
         self.rotation = None
         
         #move base
+        self.dead_area = [] #record goal that was not reachable, see it as a dead area
         self.actoinclient = actionlib.SimpleActionClient(robot_name+'/move_base', MoveBaseAction)
-        
         self.total_frontier = np.array([],dtype=float).reshape(-1,2)
         self.finish_explore = False
 
@@ -226,16 +223,10 @@ class RobotNode:
         except:
             pass
         self.grid_map_ready = 1
+        self.update_robot_pose()
         self.update_frontier()
         self.change_goal()
         self.visulize_vertex()
-        #保存图片
-        if save_result:
-            temp = self.global_map[max(self.current_loc_pixel[0]-range,0):min(self.current_loc_pixel[0]+range,shape[0]), max(self.current_loc_pixel[1]-range,0):min(self.current_loc_pixel[1]+range, shape[1])]
-            temp[np.where(temp==-1)] = 125
-            cv2.imwrite(debug_path+self.self_robot_name + "_local_map.jpg", temp)
-            cv2.imwrite(debug_path+self.self_robot_name +"_global_map.jpg", self.global_map)
-
 
     def move_base_status_callback(self, data):
         try:
@@ -245,6 +236,7 @@ class RobotNode:
             if status >= 3:
                 self.erro_count +=1
             if self.erro_count >= 3:
+                self.dead_area.append(copy.deepcopy(self.goal))
                 self.change_goal()
                 self.erro_count = 0
         except:
@@ -275,6 +267,9 @@ class RobotNode:
         for index, frontier in enumerate(self.total_frontier):
             if self.is_explored_frontier(frontier):
                 delete_index.append(index)
+            for now_area_pos in self.dead_area:
+                if np.linalg.norm(now_area_pos - frontier) < 2: #对于以前不可达的frontier直接删掉
+                    delete_index.append(index)
         self.total_frontier = np.delete(self.total_frontier, delete_index, axis = 0)
 
         #goal in map frame
