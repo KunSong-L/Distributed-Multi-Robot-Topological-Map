@@ -212,7 +212,7 @@ Visualization Manager:
       Marker Topic: /robot1/visualization/marker
       Name: MarkerArray
       Namespaces:
-        {}
+        topological_map: true
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -249,7 +249,7 @@ Visualization Manager:
         robot1/map:
           Value: true
         robot1/odom:
-          Value: false
+          Value: true
         robot1/wheel_left_link:
           Value: false
         robot1/wheel_right_link:
@@ -395,7 +395,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 277.79571533203125
+      Distance: 237.47047424316406
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -403,9 +403,9 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 4.441825866699219
-        Y: 1.6278914213180542
-        Z: -230.0279083251953
+        X: -2.4090378284454346
+        Y: 2.6257922649383545
+        Z: -200.7332763671875
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

@@ -395,6 +395,7 @@ def change_frame_multi(points_1, T_1_2):
     T_1_2[-1,-1] = 1
     
     result = []
+    input_length = 3
     for point_1 in points_1:
         input_length = len(point_1)
         if input_length==2:

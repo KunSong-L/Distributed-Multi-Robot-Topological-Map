@@ -85,6 +85,7 @@ class TopologicalMap:
     def __init__(self, robot_name='1', threshold=0.8) -> None:
         self.robot_name = robot_name
         self.vertex = list()#保存了所有节点
+        self.total_main_vertex = list()
         self.edge = list()
         self.threshold = threshold
         self.vertex_id = -1

@@ -7,6 +7,8 @@
 
   <node name="robot_explore" pkg="multi_fht_map" type="multi_rendezvous.py" output="screen">
     <param name="robot_num" value="2"/>
+    <param name="network" value="retrievalSfM120k-vgg16-gem" />
+    <param name="platform" value="cuda" />
   </node>
   
 

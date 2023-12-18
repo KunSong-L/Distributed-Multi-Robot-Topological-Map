@@ -6,6 +6,9 @@ class VRP_solver:
         self.M_large = -99
         self.points = points
         self.robot_pose = robot_pose
+
+        self.n_points = -1
+        self.n_robot = -1
         self.max_iter = 10
         self.scale = 1000
 
@@ -14,8 +17,8 @@ class VRP_solver:
         return np.linalg.norm(pose1 - pose2)
 
     def global_path_to_each_robot(self,path,cosmat):
-        n_robot = len(self.robot_pose)
-        n_point = len(self.points)
+        n_robot = self.n_robot
+        n_point = self.n_points
         problem_dim = n_robot + n_point + 1
 
         #return a dict
@@ -39,12 +42,11 @@ class VRP_solver:
             now_path = final_path[now_robot]
             if len(now_path) == 0:
                 continue
-            path_length[now_robot] += cosmat[now_robot,now_path[0]+len(self.robot_pose)]
+            path_length[now_robot] += cosmat[now_robot,now_path[0]+self.n_robot]
             for i in range(len(now_path)-1):
-                path_length[now_robot] += cosmat[now_path[i]+len(self.robot_pose),now_path[i+1]+len(self.robot_pose)]
+                path_length[now_robot] += cosmat[now_path[i]+self.n_robot,now_path[i+1]+self.n_robot]
         for now_robot in path_length.keys():#去掉scale
             path_length[now_robot]/=self.scale
-
 
         return final_path,path_length
 
@@ -92,7 +94,7 @@ class VRP_solver:
         fileID2 = open((pwd + tsplib_dir + fname_tsp + '.par'), "w")
 
         problem_file_line = 'PROBLEM_FILE = ' + pwd + tsplib_dir + fname_tsp + '.tsp' + '\n' # remove pwd + tsplib_dir
-        optimum_line = f'OPTIMUM {self.M_large*len(self.robot_pose)*self.scale}' + '\n'
+        optimum_line = f'OPTIMUM {self.M_large*self.n_robot*self.scale}' + '\n'
         move_type_line = 'MOVE_TYPE = 5' + '\n'
         patching_c_line = 'PATCHING_C = 3' + '\n'
         patching_a_line = 'PATCHING_A = 2' + '\n'
@@ -111,16 +113,25 @@ class VRP_solver:
         fileID2.close()
         return fileID, fileID2
 
-    def solveVRP(self,fname_tsp='TSP_file',problemType='ATSP'):
+    def solveVRP(self,robot_frontier_mat = None, frontier_mat = None, fname_tsp='TSP_file',problemType='ATSP'):
         #CostMatrix[i,j]: the cost from node i to node j
         #预处理CostMatrix
-        CostMatrix = self.create_distance_mat(self.points,self.robot_pose)
-        n_robot = len(self.robot_pose)
-        
-        if len(CostMatrix)==2:
-            return [0,1,-1], CostMatrix[0,1] + CostMatrix[1,0]
+        if robot_frontier_mat is None and frontier_mat is None:
+            CostMatrix = self.create_distance_mat(self.points,self.robot_pose)
+            self.n_robot = len(self.robot_pose)
+            self.n_points = len(self.points)
+            
+        else:
+            #给定从机器人到前沿点代价和前沿点之间距离代价矩阵情况
+            self.n_robot = robot_frontier_mat.shape[0]
+            self.n_points = robot_frontier_mat.shape[1]
 
+            CostMatrix = self.create_distance_mat_from_2mat(robot_frontier_mat,frontier_mat)
+        
         CostMatrix = CostMatrix*self.scale
+        #None frontier
+        if len(CostMatrix)==2:
+            return {0:[]}, 0
 
         user_comment = "a comment by the user"
         # Change these directories based on where you have 
@@ -129,7 +140,7 @@ class VRP_solver:
         tsplib_dir = '/'
         lkh_cmd = 'LKH'
         pwd = os.path.dirname(os.path.abspath(__file__))
-        fileID1,fileID2 = self.writeTSPLIBfile_FE(fname_tsp,CostMatrix,user_comment,pwd,tsplib_dir,problemType,n_robot)
+        fileID1,fileID2 = self.writeTSPLIBfile_FE(fname_tsp,CostMatrix,user_comment,pwd,tsplib_dir,problemType,self.n_robot)
         run_lkh_cmd =  pwd + lkh_dir  + lkh_cmd + ' ' + pwd + tsplib_dir + fname_tsp + '.par'
         os.system(f"{run_lkh_cmd} > /dev/null 2>&1")
         # os.system(f"{run_lkh_cmd}")
@@ -196,12 +207,27 @@ class VRP_solver:
 
         return CostMatrix
 
+    def create_distance_mat_from_2mat(self,C_robot_to_frontier,C_frontier_to_frontier):
+        n_point = self.n_points
+        n_robot = self.n_robot
+
+        CostMatrix = np.zeros((n_point + n_robot + 1,n_point + n_robot + 1,))
+
+        M_inf = self.M_large*np.ones(n_robot)
+        CostMatrix[0,1:n_robot+1] = M_inf
+        
+        CostMatrix[1:n_robot+1,1+n_robot:] = C_robot_to_frontier
+        CostMatrix[1+n_robot:,1:n_robot+1] = C_robot_to_frontier.T
+        CostMatrix[1+n_robot:,1+n_robot:] = C_frontier_to_frontier
+
+        return CostMatrix
+
 
 if __name__ == '__main__':
     #利用贪心算法求解mTSP，每次的前沿点都被当前最优的选择处理
     import matplotlib.pyplot as plt
     import time
-    num_points = 20
+    num_points = 10
     # multi robot
     n_robot = 1
     robots_pose = np.random.random((n_robot,2))
