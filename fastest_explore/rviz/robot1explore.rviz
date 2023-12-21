@@ -9,7 +9,7 @@ Panels:
         - /Pose2
         - /TF1/Frames1
       Splitter Ratio: 0.6617646813392639
-    Tree Height: 1666
+    Tree Height: 270
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -220,7 +220,7 @@ Visualization Manager:
       Marker Topic: /robot1/visualization/edge
       Name: MarkerArray
       Namespaces:
-        {}
+        topological_map: true
       Queue Size: 100
       Value: true
     - Class: rviz/TF
@@ -309,28 +309,6 @@ Visualization Manager:
                   {}
                 robot1/wheel_right_link:
                   {}
-          robot2/map:
-            robot2/odom:
-              robot2/base_footprint:
-                robot2/base_link:
-                  robot2/base_camera1:
-                    {}
-                  robot2/base_camera2:
-                    {}
-                  robot2/base_camera3:
-                    {}
-                  robot2/base_camera4:
-                    {}
-                  robot2/base_scan:
-                    {}
-                  robot2/caster_back_link:
-                    {}
-                  robot2/imu_link:
-                    {}
-                  robot2/wheel_left_link:
-                    {}
-                  robot2/wheel_right_link:
-                    {}
       Update Interval: 0
       Value: true
     - Class: rviz/Marker
@@ -356,7 +334,7 @@ Visualization Manager:
       Marker Topic: /robot1/vertex_free_space
       Name: MarkerArray
       Namespaces:
-        {}
+        "": true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -364,7 +342,7 @@ Visualization Manager:
       Marker Topic: /global_frontier_points
       Name: Marker
       Namespaces:
-        {}
+        total_frontier: true
       Queue Size: 100
       Value: true
   Enabled: true
@@ -395,7 +373,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 237.47047424316406
+      Distance: 294.46337890625
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -403,9 +381,9 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -2.4090378284454346
-        Y: 2.6257922649383545
-        Z: -200.7332763671875
+        X: 7.10637092590332
+        Y: 2.709440231323242
+        Z: -236.01251220703125
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

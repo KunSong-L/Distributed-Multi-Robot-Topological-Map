@@ -359,30 +359,32 @@ def pose_gragh_opt(input, angle_cost = 0):
     f_optimal = result.fun
     return x_optimal
 
-def change_frame(point_1, T_1_2):
-    #根据转换关系把在1坐标系下point转换到1坐标系下
-    #T_1_2：[x,y,yaw]格式
-    #point_1: 向量[x,y,yaw]或者[x,y]
-    #返回：在2坐标系下的point位置
-    input_length = len(point_1)
-    if input_length==2:
-        point_1 = [point_1[0],point_1[1],0]
+# def change_frame(point_1, T_1_2):
+#     #根据转换关系把在1坐标系下point转换到2坐标系下
+#     #1坐标系下有一个点point_1, 同时还有2->1的坐标变换，计算2坐标系下的点
+#     #result = T^2_1 * p^1
+#     #T_1_2：[x,y,yaw]格式
+#     #point_1: 向量[x,y,yaw]或者[x,y]
+#     #返回：在2坐标系下的point位置
+#     input_length = len(point_1)
+#     if input_length==2:
+#         point_1 = [point_1[0],point_1[1],0]
 
-    R_1_2 = R.from_euler('z', T_1_2[2], degrees=False).as_matrix()
-    t_1_2 = np.array([T_1_2[0],T_1_2[1],0]).reshape(-1,1)
-    T_1_2 = np.block([[R_1_2,t_1_2],[np.zeros((1,4))]])
-    T_1_2[-1,-1] = 1
+#     R_1_2 = R.from_euler('z', T_1_2[2], degrees=False).as_matrix()
+#     t_1_2 = np.array([T_1_2[0],T_1_2[1],0]).reshape(-1,1)
+#     T_1_2 = np.block([[R_1_2,t_1_2],[np.zeros((1,4))]])
+#     T_1_2[-1,-1] = 1
     
-    R_1_point = R.from_euler('z', point_1[2], degrees=False).as_matrix()
-    t_1_point = np.array([point_1[0],point_1[1],0]).reshape(-1,1)
-    T_1_point = np.block([[R_1_point,t_1_point],[np.zeros((1,4))]])
-    T_1_point[-1,-1] = 1
+#     R_1_point = R.from_euler('z', point_1[2], degrees=False).as_matrix()
+#     t_1_point = np.array([point_1[0],point_1[1],0]).reshape(-1,1)
+#     T_1_point = np.block([[R_1_point,t_1_point],[np.zeros((1,4))]])
+#     T_1_point[-1,-1] = 1
 
-    T_2_point =  np.linalg.inv(T_1_2) @ T_1_point
-    rot = R.from_matrix(T_2_point[0:3,0:3]).as_euler('xyz',degrees=False)[2]
+#     T_2_point =  np.linalg.inv(T_1_2) @ T_1_point
+#     rot = R.from_matrix(T_2_point[0:3,0:3]).as_euler('xyz',degrees=False)[2]
 
-    result = [T_2_point[0,-1], T_2_point[1,-1], rot]
-    return result[0:input_length]
+#     result = [T_2_point[0,-1], T_2_point[1,-1], rot]
+#     return result[0:input_length]
 
 def change_frame_multi(points_1, T_1_2):
     #根据转换关系把在1坐标系下的多个point转换到2坐标系下
@@ -413,3 +415,26 @@ def change_frame_multi(points_1, T_1_2):
 
     result = np.array(result)
     return result[:,0:input_length]
+
+def change_frame(point_1, T_1_2):
+    #根据转换关系把在1坐标系下point转换到2坐标系下
+    #1坐标系下有一个点point_1, 同时还有2->1的坐标变换，计算2坐标系下的点
+    #result = (T^2_1)^(-1) * p_1
+    #T_1_2：[x,y,yaw]格式
+    #point_1: 向量[x,y,yaw]或者[x,y]
+    #返回：在2坐标系下的point位置
+    input_length = len(point_1)
+    if input_length==2:
+        point_1 = [point_1[0],point_1[1],0]
+
+    a =  T_1_2[2]
+    T1_2_mat = np.array([[np.cos(a),-np.sin(a),T_1_2[0]],[np.sin(a),np.cos(a),T_1_2[1]],[0,0,1]])
+    b = point_1[2]
+    T1_point_mat = np.array([[np.cos(b),-np.sin(b),point_1[0]],[np.sin(b),np.cos(b),point_1[1]],[0,0,1]])
+
+    T_2_point =  np.linalg.inv(T1_2_mat) @ T1_point_mat
+    rot = np.arctan2(T_2_point[1,0],T_2_point[0,0])
+
+    result = [T_2_point[0,-1], T_2_point[1,-1], rot]
+    return result[0:input_length]
+

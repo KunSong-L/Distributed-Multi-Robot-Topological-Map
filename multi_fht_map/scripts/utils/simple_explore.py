@@ -57,12 +57,12 @@ class RobotNode:
 
         self.actoinclient.wait_for_server()
 
-    def change_goal(self,move_goal):
-        goal_message, goal_marker, self.goal = self.get_move_goal_and_marker(self.self_robot_name,move_goal )#offset = 0
+    def change_goal(self,move_goal,extend_length = 4):
+        goal_message, goal_marker, self.goal = self.get_move_goal_and_marker(self.self_robot_name,move_goal,extend_length)#offset = 0
         self.actoinclient.send_goal(goal_message)
         self.goal_pub.publish(goal_marker)
     
-    def get_move_goal_and_marker(self, robot_name, goal):
+    def get_move_goal_and_marker(self, robot_name, goal,extend_length):
         #next angle should be next goal direction
         goal_message = MoveBaseGoal()
         goal_message.target_pose.header.frame_id = robot_name + "/map"
@@ -70,7 +70,7 @@ class RobotNode:
 
         goal_vector = np.array(goal - self.pose[0:2])
 
-        extended_goal_vector = goal_vector/np.linalg.norm(goal_vector) * 4
+        extended_goal_vector = goal_vector/np.linalg.norm(goal_vector) * extend_length
         new_goal = goal + extended_goal_vector #把目标向前延伸一点
         new_goal_pixel = np.array([int((new_goal[0] - self.map_origin[0])/self.map_resolution), int((new_goal[1] - self.map_origin[1])/self.map_resolution)])
         if self.global_map[new_goal_pixel[1],new_goal_pixel[0]] != 255:

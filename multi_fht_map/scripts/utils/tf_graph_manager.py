@@ -52,6 +52,8 @@ class multi_robot_tf_manager():
         rospy.Subscriber("/tf", TFMessage, self.catch_tf_callback, queue_size=1000, buff_size=52428800)
     
     def catch_tf_callback(self,tf_msg):
+        #通过tf这个topic获取相对位姿变换
+        #利用tf直接获取实时性比较差
         for transform in tf_msg.transforms:
             # 提取变换信息
             translation = transform.transform.translation
@@ -71,11 +73,18 @@ class multi_robot_tf_manager():
                 child_robot_index = int(''.join(filter(str.isdigit, child_frame_id))) 
                 
                 self.relative_pose_list[old_robot_index-1][child_robot_index-1] = relative_pose
-
+                print(f"add relative pose from robot {old_robot_index} to {child_robot_index}: {self.relative_pose_list[old_robot_index-1][child_robot_index-1]}")
                 #from T 1->2 to T 2->1
                 verse_relative_pose = change_frame([0,0,0], relative_pose)
                 self.relative_pose_list[child_robot_index-1][old_robot_index-1] = verse_relative_pose
-                
+
+    def add_tf_trans(self,robot1_index,robot2_index,rela_pose):
+        #rela_pose: [x,y,yaw]
+        self.relative_pose_list[robot1_index][robot2_index] = rela_pose
+        verse_relative_pose = change_frame([0,0,0], rela_pose)
+        self.relative_pose_list[robot2_index][robot1_index] = verse_relative_pose
+
+
     def obtain_sub_connected_graph(self):
         #获取所有图上的连通子图
 

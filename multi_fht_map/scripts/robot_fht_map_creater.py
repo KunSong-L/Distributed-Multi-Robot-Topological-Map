@@ -37,7 +37,7 @@ debug_path = "/home/master/debug/test1/"
 save_result = False
 
 class fht_map_creater:
-    def __init__(self, robot_name):#输入当前机器人，其他机器人的id list
+    def __init__(self, robot_name,main_node_density=25):#输入当前机器人，其他机器人的id list
         rospack = rospkg.RosPack()
         self.self_robot_name = robot_name
         self.robot_index = int(robot_name[-1])-1
@@ -89,7 +89,7 @@ class fht_map_creater:
         self.map_resolution = float(rospy.get_param('map_resolution', 0.05))
 
         #robot data
-        self.pose = [0,0,0] # x y yaw angle in degree
+        self.pose = [0,0,0] # x y yaw angle in radian
         self.max_v = 0.5
         self.max_w = 0.2
 
@@ -103,6 +103,7 @@ class fht_map_creater:
         self.adj_list = dict()#拓扑地图到邻接矩阵
         self.potential_main_vertex = list()
         self.map_origin=None
+        self.main_vertex_dens = main_node_density
 
 
         # get tf
@@ -254,12 +255,12 @@ class fht_map_creater:
         # ----get now pose----  
         #tracking map->base_footprint
         tmptimenow = rospy.Time.now()
-        self.tf_listener.waitForTransform(self.self_robot_name+"/map", self.self_robot_name+"/base_footprint", tmptimenow, rospy.Duration(0.5))
         try:
+            self.tf_listener.waitForTransform(self.self_robot_name+"/map", self.self_robot_name+"/base_footprint", tmptimenow, rospy.Duration(0.5))
             tf_transform, rotation = self.tf_listener.lookupTransform(self.self_robot_name+"/map", self.self_robot_name+"/base_footprint", tmptimenow)
             self.pose[0] = tf_transform[0]
             self.pose[1] = tf_transform[1]
-            self.pose[2] = R.from_quat(rotation).as_euler('xyz', degrees=True)[2]
+            self.pose[2] = R.from_quat(rotation).as_euler('xyz', degrees=False)[2]
 
         except:
             pass
@@ -338,7 +339,7 @@ class fht_map_creater:
         if self.local_laserscan_angle is None:
             return
         feature_simliar_th = 0.94
-        main_vertex_dens = 25 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good; sigma_c in paper
+        main_vertex_dens = self.main_vertex_dens #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good; sigma_c in paper
         global_vertex_dens = 2 # create a support vertex large than 2 meter
         # check the heat map value of this point
         local_laserscan_angle = copy.deepcopy(self.local_laserscan_angle)
