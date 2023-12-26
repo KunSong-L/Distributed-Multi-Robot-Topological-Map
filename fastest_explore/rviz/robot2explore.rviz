@@ -341,7 +341,7 @@ Visualization Manager:
       Marker Topic: /global_frontier_points
       Name: Marker
       Namespaces:
-        total_frontier: true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
@@ -380,9 +380,9 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 2.6257259845733643
-        Y: -4.212738513946533
-        Z: -254.91297912597656
+        X: -2.2539782524108887
+        Y: -8.024272918701172
+        Z: -254.94227600097656
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

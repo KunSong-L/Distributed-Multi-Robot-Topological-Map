@@ -19,6 +19,8 @@ from ransac_icp import ransac_icp
 import os
 import subprocess
 from sensor_msgs.msg import Image
+from robot_function import calculate_vertex_info
+from TopoMap import Support_Vertex, Vertex, Edge, TopologicalMap
 
 save_result = False
 
@@ -43,6 +45,9 @@ class multi_rendezvous_manager():
         self.tf_broadcaster = tf.TransformBroadcaster() #发布计算得到的相对位姿变换
         self.estimated_vertex_pose = {(i,j): [] for i in range(robot_num) for j in range(i,robot_num)} #(i,j): mat 
 
+        #交汇地点选取
+        self.mergered_topological_map = TopologicalMap(robot_name="robot1", threshold=0.97)
+
         #机器人运动控制
         self.vrp_solver = VRP_solver(None,None)
 
@@ -56,7 +61,7 @@ class multi_rendezvous_manager():
 
         self.vis_color = np.array([[0xFF, 0x7F, 0x51], [0xD6, 0x28, 0x28],[0xFC, 0xBF, 0x49],[0x00, 0x30, 0x49],[0x1E, 0x90, 0xFF]])/255.0
         self.global_frontier_publisher = rospy.Publisher('/global_frontier_points', Marker, queue_size=1)
-        rospy.Subscriber('/need_new_goal', Int32, self.vrp_assign, queue_size=100)
+        rospy.Subscriber('/need_new_goal', Int32, self.NBV_assign, queue_size=100) #NBV_assign, vrp_assign
         rospy.Subscriber('/need_new_goal', Int32, self.fht_map_merger, queue_size=1)
         rospy.Subscriber("/robot1/panoramic", Image, self.multi_robot_rendezvous_callback, queue_size=1)
        
@@ -64,15 +69,109 @@ class multi_rendezvous_manager():
     def multi_robot_rendezvous_callback(self,data):
         if not self.perform_rende_flag:
             return
-        
+
+        self.published_a_ren_goal = True#进入这个函数之后机器人就不再运动了
+
         if self.published_a_ren_goal:
             for i in range(self.robot_num):
                 self.RobotNode_list[i].change_goal(np.array(self.ren_goal[i])[0:2],0)
             return
-
-        #TODO: 需要写一个判断最优会合点的代码
         
-        target_in_robot1_frame = [0,0,0]
+        robot_pose_list = []
+        for i in range(self.robot_num):
+            robot_pose_list.append(self.RobotNode_list[i].pose[0:2]) #pose考虑旋转代价，如果不考虑输入前两个维度即可
+        
+        #融合所有的拓扑地图
+        #全部融合到机器人1坐标系下
+        for i in range(self.robot_num):
+            now_topomap = copy.deepcopy(self.fhtmap_creater_list[i].map)
+            
+
+        p_pose = np.array(self.RobotNode_list[0].pose[0:2]) #初始值
+
+        alpha = 1
+        shrink_w = 0.618
+
+        opt_stop_th = 0.01
+        max_opt_iter = 1000
+        now_iter = 0
+        max_shrink_iter = 20
+        near_line_th = 0.3
+
+        #开始进行优化
+        topo_path_length_list = [0 for i in range(self.robot_num)]
+        topo_path_point_list = [None for i in range(self.robot_num)]
+
+        new_topo_path_length_list = [0 for i in range(self.robot_num)]
+        new_topo_path_point_list = [None for i in range(self.robot_num)]
+        #计算路径长度
+        #TODO：获取相对位姿变换部分再优化一下，可以一次拿到所有相对位姿变换，节省时间
+        for i in range(self.robot_num):
+            p_pose_robot_frame = change_frame(p_pose,self.tf_graph_manager.get_relative_trans(0,i)) 
+            topo_path_length_list[i], topo_path_point_list[i] = self.fhtmap_creater_list[i].topo_path_planning(robot_pose_list[i], p_pose_robot_frame,False)
+
+        while now_iter < max_opt_iter:
+            print("For Iter: ", now_iter)
+            print("Rendezvous Point Pose: ", p_pose)
+            print("Path Length: ", topo_path_length_list)
+            for i in range(self.robot_num):
+                print(f"Planned Path for robot {i+1}: {topo_path_point_list[i]}")
+            #对于最长的路径
+            max_index = np.argmax(topo_path_length_list)
+
+            #获取梯度
+            #这里需要分情况讨论一下，假设获取到了一系列的点:p_1, v_1, v_2, ..., v_n,p_2
+            #如果p_2 在 v_n-1 和 v_n 组成的直线附近，那么直接把梯度设置为p_2 - v_n-1
+            #反之，则把梯度设置为p_2 - v_n
+            #这样操作可以保证梯度下降能够从一个节点附近区域下降到另一个节点附近区域
+            use_n_1_v_flag = False
+            if len(topo_path_point_list[max_index])>2:
+                #计算点到直线距离
+                v_n = np.array(topo_path_point_list[max_index][-2][0:2])
+                v_n_1 = np.array(topo_path_point_list[max_index][-3][0:2])
+                p_pose_robot_frame = np.array(change_frame(p_pose,self.tf_graph_manager.get_relative_trans(0,max_index)) )
+                n_n_n_1 =  v_n_1 - v_n
+                n_n_n_1 = n_n_n_1/np.linalg.norm(n_n_n_1)
+                tmp = np.dot(n_n_n_1, p_pose_robot_frame)
+                line_distance = (np.linalg.norm(p_pose_robot_frame)**2 - tmp**2)**0.5
+                if line_distance < near_line_th:
+                    use_n_1_v_flag = True
+            if use_n_1_v_flag:
+                nabla_f = np.array(topo_path_point_list[max_index][-1][0:2]) - np.array(topo_path_point_list[max_index][-3][0:2])
+            else:
+                nabla_f = np.array(topo_path_point_list[max_index][-1][0:2]) - np.array(topo_path_point_list[max_index][-2][0:2])
+            #梯度标准化
+            nabla_f = nabla_f/np.linalg.norm(nabla_f) #机器人max_index坐标系下的梯度
+            #梯度转换到机器人1坐标系下
+            nabla_f = change_frame(nabla_f,self.tf_graph_manager.get_relative_trans(max_index,0))
+
+            #求一个新的p
+            for i in range(max_shrink_iter):
+                p_pose_new = np.array(p_pose) - alpha * shrink_w ** i * np.array(nabla_f) #更新位置
+
+                for j in range(self.robot_num):
+                    p_pose_robot_frame = change_frame(p_pose_new,self.tf_graph_manager.get_relative_trans(0,j)) 
+                    new_topo_path_length_list[j], new_topo_path_point_list[j] = self.fhtmap_creater_list[j].topo_path_planning(robot_pose_list[j], p_pose_robot_frame,False)
+                
+                new_max_index = np.argmax(new_topo_path_length_list)
+
+                if new_topo_path_length_list[new_max_index] < topo_path_length_list[max_index]:#函数值变小了
+                    
+                    topo_path_length_list = copy.deepcopy(new_topo_path_length_list)
+                    topo_path_point_list = copy.deepcopy(new_topo_path_point_list)
+                    break
+            
+            print("Updated Pose is:",p_pose_new)
+            if np.linalg.norm(p_pose - p_pose_new) < opt_stop_th:#更新较小则推出
+                break
+            else:
+                p_pose = p_pose_new
+                now_iter += 1
+
+        print(f"Iteration times = {now_iter}. Finish Optimization, Optimal Value at {p_pose}")
+        print(f"Path Length List is: {topo_path_length_list}")
+        
+        target_in_robot1_frame = p_pose
         target_list = []
         target_list.append(target_in_robot1_frame)
         for i in range(1,self.robot_num):
@@ -86,9 +185,52 @@ class multi_rendezvous_manager():
             print(f"Publish a goal to robot {i+1}: {self.ren_goal[i]}")
         print("Perform Rendezvous")
         
-        self.published_a_ren_goal = True
+        
 
 
+
+    def NBV_assign(self,data):
+        if self.published_a_ren_goal:
+            return
+        #对每个集群内部进行VRP分配前沿点
+        #首先获取子图
+        sub_graphs = self.tf_graph_manager.obtain_sub_connected_graph()
+        if len(sub_graphs) == 1:
+            self.perform_rende_flag = True
+        robot_index = data.data
+        #判断当前机器人在哪个子图下
+        for now_sub_graph in sub_graphs:
+            if now_sub_graph[robot_index] == True:
+                break
+        
+        total_fontier = copy.deepcopy(self.RobotNode_list[robot_index].total_frontier)
+        robot_pose = copy.deepcopy(self.RobotNode_list[robot_index].pose)
+
+        frontier_poses = total_fontier
+        dis_frontier_poses = np.sqrt(np.sum(np.square(frontier_poses - robot_pose[0:2]), axis=1))
+        dis_cost = np.abs(dis_frontier_poses - 2)
+
+        angle_frontier_poses = np.arctan2(frontier_poses[:, 1] - robot_pose[1], frontier_poses[:, 0] - robot_pose[0]) - robot_pose[2] / 180 * np.pi
+        angle_frontier_poses = np.arctan2(np.sin(angle_frontier_poses), np.cos(angle_frontier_poses)) # turn to -pi~pi
+        angle_cost = np.abs(angle_frontier_poses)
+        
+        # calculate frontier information
+        vertex_info = np.array(calculate_vertex_info(frontier_poses))
+        dis_epos = 1
+        angle_epos = 2
+        frontier_scores = (1 + np.exp(-vertex_info))*(dis_epos * dis_cost + angle_epos * angle_cost)
+        max_index = np.argmin(frontier_scores)
+
+        choose_frontier = copy.deepcopy(frontier_poses[max_index])
+        try:#可能这个前沿点已经在其他地方被删除过了
+            np.delete(self.RobotNode_list[robot_index].total_frontier, max_index, axis=0)
+        except:
+            pass
+        
+        #修改前沿点
+        self.RobotNode_list[robot_index].change_goal(choose_frontier,0)
+        
+        
 
     def vrp_assign(self,data):
         if self.published_a_ren_goal:
@@ -98,7 +240,6 @@ class multi_rendezvous_manager():
         sub_graphs = self.tf_graph_manager.obtain_sub_connected_graph()
         if len(sub_graphs) == 1:
             self.perform_rende_flag = True
-
         robot_index = data.data
         #判断当前机器人在哪个子图下
         for now_sub_graph in sub_graphs:
@@ -180,11 +321,11 @@ class multi_rendezvous_manager():
         C_frontier_to_frontier = np.zeros((n_point,n_point))
         for i in range(n_robot):
             for j in range(n_point):
-                C_robot_to_frontier[i,j] = self.fhtmap_creater_list[robot_index].topo_path_planning(robot_pose[i],frontier_pose[j])
+                C_robot_to_frontier[i,j],path_point = self.fhtmap_creater_list[robot_index].topo_path_planning(robot_pose[i],frontier_pose[j])
 
         for i in range(n_point):
             for j in range(n_point):
-                C_frontier_to_frontier[i,j] = self.fhtmap_creater_list[robot_index].topo_path_planning(frontier_pose[i],frontier_pose[j])
+                C_frontier_to_frontier[i,j],path_point = self.fhtmap_creater_list[robot_index].topo_path_planning(frontier_pose[i],frontier_pose[j])
         
         # #处理最近的前沿点
         beta = -50 #对于最近的点施加一个很小的代价

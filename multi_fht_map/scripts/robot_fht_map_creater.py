@@ -322,8 +322,9 @@ class fht_map_creater:
             
             self.visulize_vertex()
 
-            topomap_message = TopomapToMessage(self.map)    
-            self.topomap_pub.publish(topomap_message) # publish topomap important!      
+            # 不发布拓扑地图，直接在外层类读取
+            # topomap_message = TopomapToMessage(self.map)    
+            # self.topomap_pub.publish(topomap_message) # publish topomap important!      
 
                 
 
@@ -675,14 +676,17 @@ class fht_map_creater:
         return start_in_vertex_index
 
 
-    def topo_path_planning(self,point1,point2):
+    def topo_path_planning(self,point1,point2,consider_ori = True):
         #输入两个点: point1/2: 格式可能为[x,y,yaw]或者[x,y]
         #输出两个点之间规划的一条轨迹和轨迹的时间代价
+        #在这个函数中，考虑了机器人转向的代价
         if len(self.map.vertex) == 0:
-            return np.linalg.norm(point1[0:2] - point2[0:2]) #TODO
+            return np.linalg.norm(point1[0:2] - point2[0:2]),[point1,point2] #TODO
         
-        if self.free_space_line(point1[0:2],point2[0:2]):
-            return self.path_distance_cost(point1,point2,[])
+        point1_pixel = (np.array(point1[0:2])- np.array(self.map_origin))/self.map_resolution
+        point2_pixel = (np.array(point2[0:2])- np.array(self.map_origin))/self.map_resolution
+        if self.free_space_line(point1_pixel,point2_pixel):
+            return self.path_distance_cost(point1,point2,[]),[point1,point2]
 
         start_in_vertex_index = self.dual_vertex_of_a_point(point1)
         target_in_vertex_index = self.dual_vertex_of_a_point(point2)
@@ -711,10 +715,20 @@ class fht_map_creater:
         path_list = []
         for now_path_index in target_path:
             path_list.append(self.map.vertex[now_path_index].pose[0:2])
+        
         #计算总的运动代价
-        path_length = self.path_distance_cost(point1,point2,path_list)
+        if consider_ori: #如果考虑旋转代价
+            path_length = self.path_distance_cost(point1,point2,path_list)
+        else: #不考虑
+            tmp = [point1] + path_list + [point2]
+            l = 0
+            for i in range(len(tmp) - 1):
+                a1 = np.array(tmp[i])
+                a2 = np.array(tmp[i+1])
+                l += np.linalg.norm(a1-a2)
+            path_length = l/self.max_v
 
-        return path_length
+        return path_length, [point1] + path_list + [point2]
 
     def path_distance_cost(self,point1,point2,path_point):
         #point1, point2: 两个以[x,y,yaw]格式给出的点

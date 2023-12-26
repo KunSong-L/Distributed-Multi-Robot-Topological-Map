@@ -85,17 +85,17 @@ class TopologicalMap:
     def __init__(self, robot_name='1', threshold=0.8) -> None:
         self.robot_name = robot_name
         self.vertex = list()#保存了所有节点
-        self.total_main_vertex = list()
+        # self.total_main_vertex = list()
         self.edge = list()
         self.threshold = threshold
         self.vertex_id = -1
         self.edge_id = 0
-        self.unexplored_points = list()
-        self.x = np.array([])
-        self.y = np.array([])
-        self.center = None
-        self.center_dict = dict()
-        self.offset_angle = 0
+        # self.unexplored_points = list()
+        # self.x = np.array([])
+        # self.y = np.array([])
+        # self.center = None
+        # self.center_dict = dict()
+        # self.offset_angle = 0
         self.map_resolution = float(rospy.get_param('map_resolution', 0.05))
         self.rotation = np.eye(3) #rotation from this topomap to robot1 frame
         self.trans_vector = np.array([0,0,0])
