@@ -16,11 +16,11 @@
     <arg name="debug" value="false"/>
   </include>
 
-  <arg name="origin_x" value="44"/>
-  <arg name="origin_y" value="24"/>
+  <arg name="origin_x" value="4"/>
+  <arg name="origin_y" value="25"/>
   <arg name="origin_yaw" value="0"/>
-  <arg name="target_x" value="40"/>
-  <arg name="target_y" value="33"/>
+  <arg name="target_x" value="28"/>
+  <arg name="target_y" value="6"/>
   <arg name="target_yaw" value="0.0"/>
 
 
@@ -56,7 +56,7 @@
 
   <node name="experiment_nav" pkg="fht_map" type="exp_nav.py" output="screen">
       <param name="robot_num" value="1"/>
-      <param name="nav_method" value="main_only_49"/>
+      <param name="nav_method" value="main_only_new_16"/>
       <param name="sim_env" value="$(arg sim_env)"/>
       <param name="target_x" value="$(arg target_x)"/>
       <param name="target_y" value="$(arg target_y)"/>

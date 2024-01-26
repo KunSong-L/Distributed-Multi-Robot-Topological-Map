@@ -219,7 +219,7 @@ Visualization Manager:
       Marker Topic: /robot2/visualization/edge
       Name: MarkerArray
       Namespaces:
-        topological_map: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/TF
@@ -286,28 +286,50 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        robot2/map:
-          robot2/odom:
-            robot2/base_footprint:
-              robot2/base_link:
-                robot2/base_camera1:
+        robot1/map:
+          robot1/odom:
+            robot1/base_footprint:
+              robot1/base_link:
+                robot1/base_camera1:
                   {}
-                robot2/base_camera2:
+                robot1/base_camera2:
                   {}
-                robot2/base_camera3:
+                robot1/base_camera3:
                   {}
-                robot2/base_camera4:
+                robot1/base_camera4:
                   {}
-                robot2/base_scan:
+                robot1/base_scan:
                   {}
-                robot2/caster_back_link:
+                robot1/caster_back_link:
                   {}
-                robot2/imu_link:
+                robot1/imu_link:
                   {}
-                robot2/wheel_left_link:
+                robot1/wheel_left_link:
                   {}
-                robot2/wheel_right_link:
+                robot1/wheel_right_link:
                   {}
+          robot2/map:
+            robot2/odom:
+              robot2/base_footprint:
+                robot2/base_link:
+                  robot2/base_camera1:
+                    {}
+                  robot2/base_camera2:
+                    {}
+                  robot2/base_camera3:
+                    {}
+                  robot2/base_camera4:
+                    {}
+                  robot2/base_scan:
+                    {}
+                  robot2/caster_back_link:
+                    {}
+                  robot2/imu_link:
+                    {}
+                  robot2/wheel_left_link:
+                    {}
+                  robot2/wheel_right_link:
+                    {}
       Update Interval: 0
       Value: true
     - Class: rviz/Marker
@@ -333,7 +355,7 @@ Visualization Manager:
       Marker Topic: /robot2/vertex_free_space
       Name: MarkerArray
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -372,7 +394,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 282.6895751953125
+      Distance: 312.0531311035156
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -380,9 +402,9 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -2.2539782524108887
-        Y: -8.024272918701172
-        Z: -254.94227600097656
+        X: 3.45904541015625
+        Y: 4.632358551025391
+        Z: -254.90740966796875
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

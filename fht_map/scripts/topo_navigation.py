@@ -58,7 +58,7 @@ class RobotNode:
     def __init__(self, robot_name, robot_list):#输入当前机器人，其他机器人的id list
         rospack = rospkg.RosPack()
         self.self_robot_name = robot_name
-        path = rospack.get_path('self_topoexplore')
+        path = rospack.get_path('fht_map')
         # in simulation environment each robot has same intrinsic matrix
         self.K_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
         #network part

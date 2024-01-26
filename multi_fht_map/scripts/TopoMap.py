@@ -74,7 +74,6 @@ class Support_Vertex:
         self.local_free_space_rect = [0,0,0,0]
 
 class Edge:
-    
     def __init__(self, id, link) -> None:
         self.id = id
         self.link = link # [[last_robot_name, last_robot_id], [now_robot_name, now_vertex_id]]

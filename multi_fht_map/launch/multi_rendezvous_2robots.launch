@@ -1,6 +1,7 @@
 <launch>
 
   <arg name="model" default="burger"/>
+  <node name="rviz0" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot0explore.rviz" />
   <node name="rviz1" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot1explore.rviz" />
   <node name="rviz2" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot2explore.rviz" />
 

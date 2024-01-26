@@ -70,7 +70,12 @@ class RobotNode:
 
         goal_vector = np.array(goal - self.pose[0:2])
 
-        extended_goal_vector = goal_vector/np.linalg.norm(goal_vector) * extend_length
+        length_vector = np.linalg.norm(goal_vector)
+        if length_vector == 0:
+            extended_goal_vector = goal_vector* extend_length
+        else:
+            extended_goal_vector = goal_vector / np.linalg.norm(goal_vector) * extend_length
+
         new_goal = goal + extended_goal_vector #把目标向前延伸一点
         new_goal_pixel = np.array([int((new_goal[0] - self.map_origin[0])/self.map_resolution), int((new_goal[1] - self.map_origin[1])/self.map_resolution)])
         if self.global_map[new_goal_pixel[1],new_goal_pixel[0]] != 255:

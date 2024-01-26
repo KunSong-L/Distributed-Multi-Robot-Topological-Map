@@ -79,7 +79,6 @@ class RobotNode:
         
         #robot data
         self.pose = [0,0,0] # x y yaw angle in degree
-        self.init_map_angle_ready = 0
         self.map_orientation = None
         self.map_angle = None #Yaw angle of map
         self.current_loc_pixel = [0,0]
@@ -212,43 +211,6 @@ class RobotNode:
         self.panoramic_view_pub.publish(image_message)
 
 
-    def receive_image_callback(self, image_pc):
-        image = image_pc.image
-        self.relative_pose_image = self.cv_bridge.imgmsg_to_cv2(image)
-        self.image_ready = 1
-
-        pc = image_pc.lidar_point
-        self.relative_pose_pc = pc
-
-
-    def receive_image_req_callback(self, req):
-        #req: i_j_id
-        input_list = req.data.split()  # 将字符串按照空格分割成一个字符串列表
-        if input_list[1] in self.self_robot_name:
-            # publish image msg
-            img_pc_msg = ImageWithPointCloudMsg()
-            image_index = int(input_list[2])
-            req_image = self.map.vertex[image_index].local_image
-            header = Header(stamp=rospy.Time.now())
-            image_msg = self.cv_bridge.cv2_to_imgmsg(req_image, encoding="mono8")
-            image_msg.header = header
-
-            #use real laser scan for icp
-            local_laserscan_angle = self.map.vertex[image_index].local_laserscan_angle
-            valid_indices = np.isfinite(local_laserscan_angle)
-            local_laserscan  = np.array(local_laserscan_angle * self.laser_scan_cos_sin)[:,valid_indices]
-            x = local_laserscan[0,:]
-            y = local_laserscan[1,:]
-
-            pc =  np.concatenate((x, y)).tolist()
-            img_pc_msg.image = image_msg
-            img_pc_msg.lidar_point = pc
-            self.image_data_pub.publish(img_pc_msg) #finish publish message
-
-
-            print("robot = ",self.self_robot_name,"  publish image index = ",image_index)
-
-
     def visulize_vertex(self):
         # ----------visualize frontier------------
         frontier_marker = Marker()
@@ -356,7 +318,7 @@ class RobotNode:
         #check whether create a main vertex
         uncertainty_value = 0
         
-        main_vertex_dens = 49 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
+        main_vertex_dens = 16 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
         global_vertex_dens = 2 # create a support vertex large than 2 meter
         now_pose = np.array(self.pose[0:2])
         for now_vertex in self.map.vertex:
@@ -364,8 +326,8 @@ class RobotNode:
                 continue
             now_vertex_pose = np.array(now_vertex.pose[0:2])
             dis = np.linalg.norm(now_vertex_pose - now_pose)
-            # print(now_vertex.descriptor_infor)
-            uncertainty_value += now_vertex.descriptor_infor * np.exp(-dis**2 / main_vertex_dens)
+
+            uncertainty_value += np.exp(-dis**2 / main_vertex_dens)
         if uncertainty_value > 0.61:
             self.potential_main_vertex = list()
         else:
@@ -423,10 +385,6 @@ class RobotNode:
             self.pose[1] = self.tf_transform[1]
             self.pose[2] = R.from_quat(self.rotation).as_euler('xyz', degrees=True)[2]
 
-            if self.init_map_angle_ready == 0:
-                self.map_angle = self.pose[2]
-                self.map.offset_angle = self.map_angle
-                self.init_map_angle_ready = 1
         except:
             pass
     
@@ -486,6 +444,8 @@ class RobotNode:
                 refine_topo_map_msg = Int32()
                 refine_topo_map_msg.data = int(self.last_vertex_id)
                 self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path
+                topomap_message = TopomapToMessage(self.map)
+                self.topomap_pub.publish(topomap_message) # publish topomap important!
         
     
     def find_better_path_callback(self,data):
@@ -689,18 +649,17 @@ class RobotNode:
         self.global_map = copy.deepcopy(self.global_map_tmp)
         #获取当前一个小范围的grid map
         self.grid_map = copy.deepcopy(self.global_map[max(self.current_loc_pixel[0]-range,0):min(self.current_loc_pixel[0]+range,shape[0]), max(self.current_loc_pixel[1]-range,0):min(self.current_loc_pixel[1]+range, shape[1])])
-        try:
-            #detect frontier
-            current_frontier = detect_frontier(self.global_map) * self.map_resolution + np.array(self.map_origin)
-            self.total_frontier = np.vstack((self.total_frontier, current_frontier))
-            ds_size = 0.2
-            self.total_frontier = sparse_point_cloud(self.total_frontier, ds_size)
-        except:
-            pass
-        self.grid_map_ready = 1
-        self.update_frontier()
+        #detect frontier
+        current_frontier = detect_frontier(self.global_map) * self.map_resolution + np.array(self.map_origin)
+        
+        tmp_total_frontier = np.vstack((self.total_frontier, current_frontier))
+        ds_size = 0.3
+        tmp_total_frontier = sparse_point_cloud(tmp_total_frontier, ds_size)
 
-        if len(self.map.vertex) != 0:
+        self.grid_map_ready = 1
+        self.update_frontier(tmp_total_frontier)
+
+        if len(self.map.vertex) != 0 and len(self.total_frontier)==0:
             topomap_message = TopomapToMessage(self.map)
             self.topomap_pub.publish(topomap_message) # publish topomap important!
 
@@ -715,7 +674,7 @@ class RobotNode:
         
             if status >= 3:
                 self.erro_count +=1
-            if self.erro_count >= 3:
+            if self.erro_count >= 1:
                 self.dead_area.append(copy.deepcopy(self.goal))
                 self.change_goal()
                 self.erro_count = 0
@@ -810,21 +769,21 @@ class RobotNode:
         return False
 
 
-    def update_frontier(self):
+    def update_frontier(self,tmp_total_frontier):
         #负责删除一部分前沿点
         position = self.pose
         position = np.array([position[0], position[1]])
         #delete unexplored direction based on distance between now robot pose and frontier point position
         delete_index = []
-        for index, frontier in enumerate(self.total_frontier):
+        for index, frontier in enumerate(tmp_total_frontier):
             if self.is_explored_frontier(frontier):
                 delete_index.append(index)
             for now_area_pos in self.dead_area:
                 if np.linalg.norm(now_area_pos - frontier) < 2: #对于以前不可达的frontier直接删掉
                     delete_index.append(index)
 
-        self.total_frontier = np.delete(self.total_frontier, delete_index, axis = 0)
-
+        tmp_total_frontier = np.delete(tmp_total_frontier, delete_index, axis = 0)
+        self.total_frontier = tmp_total_frontier
         #goal in map frame
         now_goal = self.goal
         if now_goal.size > 0:

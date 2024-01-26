@@ -56,7 +56,7 @@ class RobotNode:
     def __init__(self, robot_name, robot_list):#输入当前机器人，其他机器人的id list
         rospack = rospkg.RosPack()
         self.self_robot_name = robot_name
-        path = rospack.get_path('self_topoexplore')
+        path = rospack.get_path('fht_map')
         # in simulation environment each robot has same intrinsic matrix
         self.K_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
         #network part
@@ -315,72 +315,7 @@ class RobotNode:
         self.marker_pub.publish(marker_array)
         self.edge_pub.publish(edge_array)
 
-    def create_a_vertex(self,panoramic_view):
-        #return 1 for uncertainty value reach th; 2 for not a free space line
-        #and 0 for don't creat a vertex
-
-        #check whether create a main vertex
-        uncertainty_value = 0
-        
-        main_vertex_dens = 49 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
-        global_vertex_dens = 2 # create a support vertex large than 2 meter
-        now_pose = np.array(self.pose[0:2])
-        for now_vertex in self.map.vertex:
-            if isinstance(now_vertex, Support_Vertex):
-                continue
-            now_vertex_pose = np.array(now_vertex.pose[0:2])
-            dis = np.linalg.norm(now_vertex_pose - now_pose)
-            # print(now_vertex.descriptor_infor)
-            uncertainty_value += now_vertex.descriptor_infor * np.exp(-dis**2 / main_vertex_dens)
-        if uncertainty_value > 0.57:
-            self.potential_main_vertex = list()
-        else:
-            self.now_feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
-            gray_local_img = cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY)
-            vertex = Vertex(robot_name, id=-1, pose=copy.deepcopy(self.pose), descriptor=copy.deepcopy(self.now_feature), local_image=gray_local_img, local_laserscan_angle=copy.deepcopy(self.local_laserscan_angle))
-            self.potential_main_vertex.append(vertex) 
-            if uncertainty_value <0.368:
-                #evaluate vertex information
-                return 1
-
-        #check wheter create a supportive vertex
-        map_origin = np.array(self.map_origin)
-        now_robot_pose = (now_pose - map_origin)/self.map_resolution
-        free_line_flag = False
-        
-        for last_vertex in self.map.vertex:
-            last_vertex_pose = np.array(last_vertex.pose[0:2])
-            from_last_vertex_dis = np.linalg.norm(last_vertex_pose - np.array(self.pose[0:2]))
-            if from_last_vertex_dis < 0.5:
-                expaned_line_width = 1
-            else:
-                expaned_line_width = 5
-            last_vertex_pose_pixel = ( last_vertex_pose- map_origin)/self.map_resolution
-
-            free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, expaned_line_width,True)
-            
-            if free_line_flag:
-                break
-        
-        if not free_line_flag:#if not a line in free space, create a support vertex
-            self.potential_main_vertex = list()
-            self.now_feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
-            gray_local_img = cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY)
-            vertex = Vertex(robot_name, id=-1, pose=self.pose, descriptor=self.now_feature, local_image=gray_local_img, local_laserscan_angle=self.local_laserscan_angle)
-            self.potential_main_vertex.append(vertex) 
-            return 1
-
-        # min_dens_flag = False
-        # for last_vertex in self.map.vertex:
-        #     last_vertex_pose = np.array(last_vertex.pose[0:2])
-        #     if np.linalg.norm(now_pose - last_vertex_pose) < global_vertex_dens:
-        #         min_dens_flag = True
-
-        # if not min_dens_flag:#if robot in a place with not that much vertex, then create a support vertex
-        #     return 3
-        
-        return 0
-
+    
 
     def update_robot_pose(self):
         # ----get now pose----  
@@ -438,9 +373,10 @@ class RobotNode:
                 vertex = copy.deepcopy(self.potential_main_vertex[max_infor_index])
                 self.last_vertex_id, self.current_node = self.map.add(vertex)
                 
-            elif create_a_vertex_flag == 2 or create_a_vertex_flag == 3:#create a support vertex
-                vertex = Support_Vertex(robot_name, id=-1, pose=current_pose)
+            elif create_a_vertex_flag == 2: 
+                vertex = Vertex(robot_name, id=-1, pose=copy.deepcopy(self.pose), descriptor=copy.deepcopy(self.now_feature), local_image=panoramic_view, local_laserscan_angle=copy.deepcopy(self.local_laserscan_angle))
                 self.last_vertex_id, self.current_node = self.map.add(vertex)
+
             # add rect to vertex
             if self.last_vertex_id > 0:
                 self.map.vertex[-2].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[-2].pose[0:2], self.map_origin, self.map_resolution)
@@ -453,6 +389,62 @@ class RobotNode:
             self.vertex_dict[self.self_robot_name].append(vertex.id)
             self.change_goal()
         
+    def create_a_vertex(self,panoramic_view):
+        #return 1 for uncertainty value reach th; 2 for not a free space line
+        #and 0 for don't creat a vertex
+
+        #check whether create a main vertex
+        uncertainty_value = 0
+        
+        main_vertex_dens = 16 #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good
+        global_vertex_dens = 2 # create a support vertex large than 2 meter
+        now_pose = np.array(self.pose[0:2])
+        for now_vertex in self.map.vertex:
+            if isinstance(now_vertex, Support_Vertex):
+                continue
+            now_vertex_pose = np.array(now_vertex.pose[0:2])
+            dis = np.linalg.norm(now_vertex_pose - now_pose)
+            # print(now_vertex.descriptor_infor)
+            uncertainty_value += np.exp(-dis**2 / main_vertex_dens)
+        if uncertainty_value > 0.57:
+            self.potential_main_vertex = list()
+        else:
+            self.now_feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
+            gray_local_img = cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY)
+            vertex = Vertex(robot_name, id=-1, pose=copy.deepcopy(self.pose), descriptor=copy.deepcopy(self.now_feature), local_image=gray_local_img, local_laserscan_angle=copy.deepcopy(self.local_laserscan_angle))
+            self.potential_main_vertex.append(vertex) 
+            if uncertainty_value <0.368:
+                #evaluate vertex information
+                return 1
+
+        #check wheter create a supportive vertex
+        map_origin = np.array(self.map_origin)
+        now_robot_pose = (now_pose - map_origin)/self.map_resolution
+        free_line_flag = False
+        
+        for last_vertex in self.map.vertex:
+            last_vertex_pose = np.array(last_vertex.pose[0:2])
+            from_last_vertex_dis = np.linalg.norm(last_vertex_pose - np.array(self.pose[0:2]))
+            if from_last_vertex_dis < 0.5:
+                expaned_line_width = 1
+            else:
+                expaned_line_width = 5
+            last_vertex_pose_pixel = ( last_vertex_pose- map_origin)/self.map_resolution
+
+            free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, expaned_line_width,True)
+            
+            if free_line_flag:
+                break
+        
+        if not free_line_flag:#if not a line in free space, create a support vertex
+            self.potential_main_vertex = list()
+            self.now_feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
+            gray_local_img = cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY)
+            vertex = Vertex(robot_name, id=-1, pose=self.pose, descriptor=self.now_feature, local_image=gray_local_img, local_laserscan_angle=self.local_laserscan_angle)
+            self.potential_main_vertex.append(vertex) 
+            return 2
+       
+        return 0
 
     def create_edge(self):
         #connect all edge with nearby vertex
@@ -486,11 +478,11 @@ class RobotNode:
                         self.map.edge.append(Edge(id=self.map.edge_id, link=link))
                         self.map.edge_id += 1
         
-        # if create_edge_num == 0:
-        #     now_vertex = self.map.vertex[-2]
-        #     link = [[now_vertex.robot_name, now_vertex.id], [self.current_node.robot_name, self.current_node.id]]
-        #     self.map.edge.append(Edge(id=self.map.edge_id, link=link))
-        #     self.map.edge_id += 1
+        if create_edge_num == 0:
+            now_vertex = self.map.vertex[-2]
+            link = [[now_vertex.robot_name, now_vertex.id], [self.current_node.robot_name, self.current_node.id]]
+            self.map.edge.append(Edge(id=self.map.edge_id, link=link))
+            self.map.edge_id += 1
 
 
     def change_goal(self):
@@ -619,7 +611,7 @@ class RobotNode:
         
             if status >= 3:
                 self.erro_count +=1
-            if self.erro_count >= 3:
+            if self.erro_count >= 1:
                 self.dead_goal.append(copy.deepcopy(self.goal))
                 self.change_goal()
                 self.erro_count = 0
@@ -653,7 +645,7 @@ class RobotNode:
                 delete_index.append(index)
                 continue
             for now_area_pos in self.dead_goal:
-                if np.linalg.norm(now_area_pos - frontier) < 2: #对于以前不可达的frontier直接删掉
+                if np.linalg.norm(now_area_pos - frontier) < 3: #对于以前不可达的frontier直接删掉
                     delete_index.append(index)
 
         self.total_frontier = np.delete(self.total_frontier, delete_index, axis = 0)

@@ -155,6 +155,23 @@ def calculate_entropy(array):
 
     return entropy
 
+def calculate_infor(image):
+    #input an image; output: feature point number of a image
+    method = 0
+    if method == 0:
+        # Initiate ORB detector
+        orb = cv2.ORB_create(nfeatures=100000)
+        # find the keypoints and descriptors with ORB
+        keypoints, des = orb.detectAndCompute(image,None)
+    else:
+        # Initiate SIFT detector
+        sift = cv2.SIFT_create()
+        # find the keypoints and descriptors with SIFT
+        keypoints, des = sift.detectAndCompute(image,None)
+
+    fp_num = len(keypoints)
+
+    return fp_num
 def sparse_point_cloud(data,delta):
     # 对 xy 平面的前两列进行排序
     data_num = len(data)

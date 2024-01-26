@@ -118,7 +118,7 @@ class multi_robot_tf_manager():
     
 
     def get_relative_trans(self,robot1_index,robot2_index):
-        #想要获取T^1_2
+        #想要获取T^1_2: robot1 -> robot2的坐标变换
         #robot index start from 0!
         #首先判断是否在一个连通分支上
         subgraphs = self.obtain_sub_connected_graph()

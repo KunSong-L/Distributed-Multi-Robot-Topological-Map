@@ -58,7 +58,6 @@ def MessageToTopomap(topomap_message):
             vertex.local_free_space_rect = topomap_message.vertex[vertex_index].local_free_space_rect
             vertex.descriptor = np.asarray(topomap_message.vertex[vertex_index].descriptor)
             vertex.local_laserscan_angle = np.asarray(topomap_message.vertex[vertex_index].rot_descriptor)
-            vertex.descriptor_infor = calculate_entropy(vertex.descriptor)
             Topomap.vertex.append(vertex)
             vertex_index += 1
         else:

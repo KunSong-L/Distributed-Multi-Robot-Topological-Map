@@ -21,7 +21,7 @@ import subprocess
 from sensor_msgs.msg import Image
 from robot_function import calculate_vertex_info
 from TopoMap import Support_Vertex, Vertex, Edge, TopologicalMap
-
+from utils.static_fht_map import static_fht_map
 save_result = False
 
 class multi_rendezvous_manager():
@@ -43,8 +43,13 @@ class multi_rendezvous_manager():
         self.similarity_mat_dict = {(i,j): [] for i in range(robot_num) for j in range(i,robot_num)} #(i,j): mat 
         self.similarity_th = 0.97
         self.tf_broadcaster = tf.TransformBroadcaster() #发布计算得到的相对位姿变换
-        self.estimated_vertex_pose = {(i,j): [] for i in range(robot_num) for j in range(i,robot_num)} #(i,j): mat 
+        self.adj_mat_topomap = np.array([[0,1],[1,0]])
 
+        #获得一个i，j机器人之间的观测结果  需要利用这个观察结果修改FHT-Map
+        #储存结果，一个在i机器人坐标系下的pose1,一个在j机器人坐标系下的pose2
+        self.estimated_vertex_pose = {(i,j): [] for i in range(robot_num) for j in range(i,robot_num)} #(i,j): mat 
+        self.global_fht_map = None
+        
         #交汇地点选取
         self.mergered_topological_map = TopologicalMap(robot_name="robot1", threshold=0.97)
 
@@ -62,7 +67,7 @@ class multi_rendezvous_manager():
         self.vis_color = np.array([[0xFF, 0x7F, 0x51], [0xD6, 0x28, 0x28],[0xFC, 0xBF, 0x49],[0x00, 0x30, 0x49],[0x1E, 0x90, 0xFF]])/255.0
         self.global_frontier_publisher = rospy.Publisher('/global_frontier_points', Marker, queue_size=1)
         rospy.Subscriber('/need_new_goal', Int32, self.NBV_assign, queue_size=100) #NBV_assign, vrp_assign
-        rospy.Subscriber('/need_new_goal', Int32, self.fht_map_merger, queue_size=1)
+        rospy.Subscriber("/robot1/panoramic", Image, self.fht_map_merger, queue_size=1)
         rospy.Subscriber("/robot1/panoramic", Image, self.multi_robot_rendezvous_callback, queue_size=1)
        
 
@@ -70,22 +75,79 @@ class multi_rendezvous_manager():
         if not self.perform_rende_flag:
             return
 
-        self.published_a_ren_goal = True#进入这个函数之后机器人就不再运动了
-
         if self.published_a_ren_goal:
+            self.global_fht_map.visulize_vertex()
             for i in range(self.robot_num):
                 self.RobotNode_list[i].change_goal(np.array(self.ren_goal[i])[0:2],0)
             return
         
+        self.published_a_ren_goal = True#进入这个函数之后机器人就不再运动了
+
         robot_pose_list = []
         for i in range(self.robot_num):
             robot_pose_list.append(self.RobotNode_list[i].pose[0:2]) #pose考虑旋转代价，如果不考虑输入前两个维度即可
         
         #融合所有的拓扑地图
+        #首先处理一下每个机器人的拓扑地图，对于发生观测的地方创建一个节点
+        added_vertex_id = [] #((robot1,id1),(robot2,id2))
+        for robot1_index in range(self.robot_num - 1):
+            for robot2_index in range(robot1_index + 1,self.robot_num):
+                now_est_list = self.estimated_vertex_pose[(robot1_index,robot2_index)]
+                if len(now_est_list) != 0:
+                    for now_est in now_est_list:
+                        robot1_pose = now_est[0]
+                        robot2_pose = now_est[1]
+                        self.fhtmap_creater_list[robot1_index].add_a_support_node(robot1_pose) #TODO
+                        self.fhtmap_creater_list[robot2_index].add_a_support_node(robot2_pose) #只要加了这两行代码就会有问题
+
+                        robot_name1 = self.fhtmap_creater_list[robot1_index].self_robot_name
+                        robot_name2 = self.fhtmap_creater_list[robot2_index].self_robot_name
+                        robot_id1 = self.fhtmap_creater_list[robot1_index].map.vertex_id
+                        robot_id2 = self.fhtmap_creater_list[robot2_index].map.vertex_id
+                        added_vertex_id.append(((robot_name1,robot_id1),(robot_name2,robot_id2)))
+
         #全部融合到机器人1坐标系下
+        global_vertex_list = []
+        global_edge_list = []
+        remap_dict = dict() #(robot_name, id) : new_id
+        vertex_id_index = 0
         for i in range(self.robot_num):
             now_topomap = copy.deepcopy(self.fhtmap_creater_list[i].map)
-            
+            #获取相对位姿变换
+            relative_pose = self.tf_graph_manager.get_relative_trans(0,i) #获取从0到机器人i的相对位姿变换
+            relative_rot = R.from_euler('z', relative_pose[2], degrees=False).as_matrix()
+            relative_trans = np.array([relative_pose[0],relative_pose[1],0])
+            now_topomap.change_topomap_frame([relative_rot,relative_trans])
+            #添加入节点
+            for now_vertex in now_topomap.vertex:
+                tmp = copy.deepcopy(now_vertex)
+                tmp.id = vertex_id_index
+                global_vertex_list.append(tmp)
+                vertex_id_index+=1
+                remap_dict[(now_vertex.robot_name, now_vertex.id)] = tmp.id
+            #添加入边
+            for now_edge in now_topomap.edge:
+                # edge格式：[[last_robot_name, last_robot_id], [now_robot_name, now_vertex_id]]
+                new_edge = copy.deepcopy(now_edge)
+                new_edge.link[0][1] = remap_dict[(new_edge.link[0][0], new_edge.link[0][1])]
+                new_edge.link[1][1] = remap_dict[(new_edge.link[1][0], new_edge.link[1][1])]
+                global_edge_list.append(new_edge)
+        
+        #把相互观测的边也加进去
+        for now_est_edge in added_vertex_id:
+            link = [[now_est_edge[0][0], remap_dict[(now_est_edge[0][0], now_est_edge[0][1])]], [now_est_edge[1][0], remap_dict[(now_est_edge[1][0], now_est_edge[1][1])]]]
+            edge_id = len(global_edge_list)
+            new_edge = Edge(edge_id,link)
+            # new_edge = copy.deepcopy(now_est_edge) #TODO
+            # new_edge.link[0][1] = remap_dict[(new_edge[0][0], new_edge[0][1])]
+            # new_edge.link[1][1] = remap_dict[(new_edge[1][0], new_edge[1][1])]
+            global_edge_list.append(new_edge)
+
+        #获取一个更新后的拓扑地图
+        self.mergered_topological_map.vertex = global_vertex_list
+        self.mergered_topological_map.edge = global_edge_list
+        self.global_fht_map = static_fht_map("robot0", self.mergered_topological_map)
+        self.global_fht_map.visulize_vertex() #可视化
 
         p_pose = np.array(self.RobotNode_list[0].pose[0:2]) #初始值
 
@@ -185,10 +247,6 @@ class multi_rendezvous_manager():
             print(f"Publish a goal to robot {i+1}: {self.ren_goal[i]}")
         print("Perform Rendezvous")
         
-        
-
-
-
     def NBV_assign(self,data):
         if self.published_a_ren_goal:
             return
@@ -389,7 +447,7 @@ class multi_rendezvous_manager():
                         now_similarity = np.dot(now_vertex_1.descriptor.T, now_vertex_2.descriptor)
                         #对于相似性超过阈值的直接进行相对位姿变换估计
                         if now_similarity > self.similarity_th:
-                            estimated_RP = self.single_RP_estimation(robot1_index,robot2_index,now_vertex_1,now_vertex_2,main_vertex_index_1,main_vertex_index_2)
+                            estimated_RP = self.single_RP_estimation(robot1_index,robot2_index,now_vertex_1,now_vertex_2)
                             obtain_new_est = True
 
                         #现在需要把结果添加到self.similarity_mat_dict[(robot1_index,robot2_index)] [i] [j]中
@@ -404,7 +462,7 @@ class multi_rendezvous_manager():
                 #now subgraph is a list
                 result = self.topo_optimize(now_subgraph)
 
-    def single_RP_estimation(self,robot1_index,robot2_index,vertex1,vertex2,main_vertex1_index,main_vertex2_index):
+    def single_RP_estimation(self,robot1_index,robot2_index,vertex1,vertex2):
         final_R, final_t = self.single_estimation(vertex2.local_laserscan_angle,vertex1.local_laserscan_angle) #估计1->2的坐标变换
         if final_R is None or final_t is None:
             return None

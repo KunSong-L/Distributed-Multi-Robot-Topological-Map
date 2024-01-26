@@ -17,9 +17,11 @@
   </include>
 
   <!-- 每次实验修改一下初始位置 -->
-  <arg name="origin_x" value="-4.0"/>
-  <arg name="origin_y" value="-5.0"/>
-  <arg name="origin_yaw" value="0.0"/>
+  <arg name="origin_x" value="2"/>
+  <arg name="origin_y" value="8"/>
+  <arg name="origin_yaw" value="0.5236"/>
+  <arg name="match_ratio" default="97"/>
+
 
   <group ns="robot1">
       <include file="$(find turtlebot3sim)/launch/includes/robot.launch.xml">
@@ -37,18 +39,20 @@
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find fht_map)/rviz/topo_reloca.rviz" />
 
+ 
 
   <node name="map_building" pkg="fht_map" type="topo_relocalization.py" output="screen">
     <param name="network" value="retrievalSfM120k-vgg16-gem" />
     <param name="platform" value="cuda" />
     <param name="robot_name" value="robot1"/>
     <param name="robot_num" value="1"/>
+    <param name="th_match" value="0.$(arg match_ratio)"/>
   </node>
 
   <node name="experiment" pkg="fht_map" type="exp_reloca.py" output="screen">
       <param name="robot_num" value="1"/>
-      <param name="sim_env" value="museum"/>
-      <param name="reloca_method" value="fht_map_7"/>
+      <param name="sim_env" value="museum0_$(arg match_ratio)"/>
+      <param name="reloca_method" value="sensitivity_16"/>
       <param name="origin_x" value="$(arg origin_x)"/>
       <param name="origin_y" value="$(arg origin_y)"/>
       <param name="origin_yaw" value="$(arg origin_yaw)"/>

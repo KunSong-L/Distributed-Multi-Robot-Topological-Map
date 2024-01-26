@@ -17,9 +17,10 @@
   </include>
 
   <!-- 每次实验修改一下初始位置 -->
-  <arg name="origin_x" value="0.0"/>
-  <arg name="origin_y" value="8.0"/>
-  <arg name="origin_yaw" value="0.0"/>
+  <arg name="origin_x" value="-4"/>
+  <arg name="origin_y" value="4"/>
+  <arg name="origin_yaw" value="3.14"/>
+  <arg name="match_ratio" default="97"/>
 
 
   <group ns="robot1">
@@ -44,12 +45,13 @@
     <param name="platform" value="cuda" />
     <param name="robot_name" value="robot1"/>
     <param name="robot_num" value="1"/>
+    <param name="th_match" value="0.$(arg match_ratio)"/>
   </node>
 
   <node name="experiment" pkg="fht_map" type="exp_reloca.py" output="screen">
       <param name="robot_num" value="1"/>
-      <param name="sim_env" value="museum"/>
-      <param name="reloca_method" value="main_only"/>
+      <param name="sim_env" value="museum0_$(arg match_ratio)"/>
+      <param name="reloca_method" value="main_only_new_16"/>
       <param name="origin_x" value="$(arg origin_x)"/>
       <param name="origin_y" value="$(arg origin_y)"/>
       <param name="origin_yaw" value="$(arg origin_yaw)"/>

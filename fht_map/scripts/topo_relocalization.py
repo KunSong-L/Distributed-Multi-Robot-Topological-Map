@@ -57,7 +57,11 @@ class RobotNode:
     def __init__(self, robot_name, robot_list):#输入当前机器人，其他机器人的id list
         rospack = rospkg.RosPack()
         self.self_robot_name = robot_name
-        path = rospack.get_path('self_topoexplore')
+        path = rospack.get_path('fht_map')
+
+        self.th_match =  float(rospy.get_param("~th_match"))
+        print(f"th_match is {self.th_match}")
+
         # in simulation environment each robot has same intrinsic matrix
         self.K_mat=np.array([319.9988245765257, 0.0, 320.5, 0.0, 319.9988245765257, 240.5, 0.0, 0.0, 1.0]).reshape((3,3))
         #network part
@@ -502,8 +506,7 @@ class RobotNode:
         self.navigated_point = np.vstack((self.navigated_point, np.array([current_pose[0],current_pose[1],best_match_rate])))
         self.navigated_point = sparse_point_cloud(self.navigated_point, 0.1)
         self.publish_point_cloud()
-
-        if best_match_rate > 0.97:
+        if best_match_rate > self.th_match:
             vertex_laser = self.received_map.vertex[best_match_index].local_laserscan_angle
             #do ICP to recover the relative pose
             now_laser_xy = self.angle_laser_to_xy(now_laser)

@@ -105,6 +105,9 @@ class fht_map_creater:
         self.map_origin=None
         self.main_vertex_dens = main_node_density
 
+        #for relative pose estimation
+        self.current_feature = [] #feature, local laser scan, pose
+
 
         # get tf
         self.tf_listener = tf.TransformListener()
@@ -278,8 +281,6 @@ class fht_map_creater:
         self.global_map = copy.deepcopy(self.global_map_tmp)
         #获取当前一个小范围的grid map
 
-
-
     def map_panoramic_callback(self, panoramic):
         start_msg = String()
         start_msg.data = "Start!"
@@ -289,8 +290,11 @@ class fht_map_creater:
             return
         current_pose = copy.deepcopy(self.pose)
         panoramic_view = self.cv_bridge.imgmsg_to_cv2(panoramic, desired_encoding="rgb8")
+        now_feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
+        #创建当前所有特征
+        self.current_feature = [copy.deepcopy(self.local_laserscan), copy.deepcopy(now_feature), copy.deepcopy(current_pose)]
         
-        create_a_vertex_flag = self.create_a_vertex(panoramic_view) # whether create a vertex
+        create_a_vertex_flag = self.create_a_vertex(panoramic_view,now_feature) # whether create a vertex
         if create_a_vertex_flag: # create a vertex
             if create_a_vertex_flag == 1:#create a main vertex
                 omega_ch = np.array([1,2]) 
@@ -315,25 +319,35 @@ class fht_map_creater:
                 self.last_vertex_id, self.current_node = self.map.add(vertex)
             # add rect to vertex
             if self.last_vertex_id > 0:
-                self.map.vertex[-2].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[-2].pose[0:2], self.map_origin, self.map_resolution)
+                self.create_local_free_space_for_single_vertex(-2)
+
             #create edge
             self.create_edge()
-
-            
+           
             self.visulize_vertex()
 
             # 不发布拓扑地图，直接在外层类读取
             # topomap_message = TopomapToMessage(self.map)    
             # self.topomap_pub.publish(topomap_message) # publish topomap important!      
 
-                
-
             if create_a_vertex_flag ==1 or create_a_vertex_flag ==2: 
                 refine_topo_map_msg = String()
                 refine_topo_map_msg.data = "Start_find_path!"
                 self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path
-        
-    def create_a_vertex(self,panoramic_view):
+    
+    def create_local_free_space_for_single_vertex(self,index):
+        self.map.vertex[index].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[index].pose[0:2], self.map_origin, self.map_resolution)
+    
+    def add_a_support_node(self, vertex_pose):
+        #增加一个支撑节点并连接边
+        # print("add vertex for ",self.self_robot_name," vertex pose = ",vertex_pose)
+        vertex = Support_Vertex(self.self_robot_name, id=-1, pose=copy.deepcopy(vertex_pose))
+        self.last_vertex_id, self.current_node = self.map.add(vertex)
+        self.visulize_vertex()
+        self.create_local_free_space_for_single_vertex(-2)
+        self.create_edge()
+
+    def create_a_vertex(self,panoramic_view,now_feature):
         #return 1 for uncertainty value reach th; 2 for not a free space line
         #and 0 for don't creat a vertex
         #important parameter
@@ -345,8 +359,7 @@ class fht_map_creater:
         # check the heat map value of this point
         local_laserscan_angle = copy.deepcopy(self.local_laserscan_angle)
         heat_map_value = self.heat_value_eval()
-        now_feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
-
+        
         max_sim = 0
         C_now = 0#calculate C
         now_pose = np.array(self.pose[0:2])
@@ -683,6 +696,9 @@ class fht_map_creater:
         if len(self.map.vertex) == 0:
             return np.linalg.norm(point1[0:2] - point2[0:2]),[point1,point2] #TODO
         
+        if np.linalg.norm(np.array(point1[0:2]) - np.array(point2[0:2]))<1:
+            return self.path_distance_cost(point1,point2,[]),[point1,point2]
+
         point1_pixel = (np.array(point1[0:2])- np.array(self.map_origin))/self.map_resolution
         point2_pixel = (np.array(point2[0:2])- np.array(self.map_origin))/self.map_resolution
         if self.free_space_line(point1_pixel,point2_pixel):
