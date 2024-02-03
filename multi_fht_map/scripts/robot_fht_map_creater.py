@@ -83,7 +83,7 @@ class fht_map_creater:
         #color: frontier, main_vertex, support vertex, edge, local free space
         robot1_color = np.array([[0xFF, 0x7F, 0x51], [0xD6, 0x28, 0x28],[0xFC, 0xBF, 0x49],[0x00, 0x30, 0x49],[0x1E, 0x90, 0xFF],[0x00, 0xFF, 0x00]])/255.0
         robot2_color = np.array([[0xFF, 0xA5, 0x00], [0xDC, 0x14, 0xb1], [0x16, 0x7c, 0xdf], [0x00, 0x64, 0x00], [0x40, 0xE0, 0xD0],[0xb5, 0xbc, 0x38]]) / 255.0
-        robot3_color = np.array([[0x8A, 0x2B, 0xE2], [0x8B, 0x00, 0x00], [0xFF, 0xF8, 0xDC], [0x7B, 0x68, 0xEE], [0xFF, 0x45, 0x00],[0xF0, 0xF8, 0xFF]]) / 255.0
+        robot3_color = np.array([[0x8A, 0x2B, 0xE2], [0x8B, 0x00, 0x00], [0xFF, 0xF8, 0xDC], [0x7B, 0x68, 0xEE], [0xFF, 0x45, 0x00],[0x78, 0xC2, 0xC4]]) / 255.0
         self.vis_color = [robot1_color,robot2_color,robot3_color]
         
         self.map_resolution = float(rospy.get_param('map_resolution', 0.05))
@@ -183,6 +183,8 @@ class fht_map_creater:
     def visulize_vertex(self):
         #可视化vertex free space
         # 创建所有平面的Marker消息
+
+        #可视化local free space
         markers = []
         markerid = 0
         
@@ -292,8 +294,8 @@ class fht_map_creater:
         panoramic_view = self.cv_bridge.imgmsg_to_cv2(panoramic, desired_encoding="rgb8")
         now_feature = cal_feature(self.net, panoramic_view, self.transform, self.network_gpu)
         #创建当前所有特征
-        self.current_feature = [copy.deepcopy(self.local_laserscan), copy.deepcopy(now_feature), copy.deepcopy(current_pose)]
-        
+        self.current_feature = [copy.deepcopy(self.local_laserscan_angle), copy.deepcopy(now_feature), copy.deepcopy(current_pose)]
+
         create_a_vertex_flag = self.create_a_vertex(panoramic_view,now_feature) # whether create a vertex
         if create_a_vertex_flag: # create a vertex
             if create_a_vertex_flag == 1:#create a main vertex
@@ -481,6 +483,8 @@ class fht_map_creater:
             return
         #compare
         #find topo_div_grid>1.5 and this path have shortest topo path
+        wrong_index = grid_path_length == 0
+        grid_path_length[wrong_index] = 1e10
         topo_div_grid = topopath_length/grid_path_length
         tmp_grid_path = grid_path_length[(topo_div_grid > 1.5) & (topo_path_vertex_num > 4)  ]
         if len(tmp_grid_path) == 0:

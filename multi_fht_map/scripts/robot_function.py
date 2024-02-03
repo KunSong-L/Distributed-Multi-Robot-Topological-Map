@@ -269,6 +269,24 @@ def calculate_vertex_info(frontiers, cluser_eps=1, cluster_min_samples=7):
 
     return vertex_infor
 
+def calculate_infor(image):
+    #input an image; output: feature point number of a image
+    method = 0
+    if method == 0:
+        # Initiate ORB detector
+        orb = cv2.ORB_create(nfeatures=100000)
+        # find the keypoints and descriptors with ORB
+        keypoints, des = orb.detectAndCompute(image,None)
+    else:
+        # Initiate SIFT detector
+        sift = cv2.SIFT_create()
+        # find the keypoints and descriptors with SIFT
+        keypoints, des = sift.detectAndCompute(image,None)
+
+    fp_num = len(keypoints)
+
+    return fp_num
+    
 def outlier_rejection(input,dis_th = 0.1):
     #input: a list of estimation
     if len(input) < 4:

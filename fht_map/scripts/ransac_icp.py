@@ -235,12 +235,18 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
 
 
 if __name__ == "__main__":
+    import time
     srcPath = "/home/master/debug/robot1_local_map.pcd"
     tgtPath = "/home/master/debug/robot2_local_map.pcd"
 
     source_pc = o3d.io.read_point_cloud(srcPath)
     target_pc = o3d.io.read_point_cloud(tgtPath)
 
-    R,T = ransac_icp(source_pc, target_pc,0)
+    start = time.time()
+    R,T = ransac_icp(source_pc, target_pc,0,0)
+    print(R,T)
+    end = time.time()
+
+    print(f"time using {end - start}")
 
     

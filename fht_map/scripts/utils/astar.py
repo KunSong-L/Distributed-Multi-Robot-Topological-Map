@@ -192,9 +192,8 @@ class AStar(ABC, Generic[T]):
             openSet = OpenSet()
             for now_key in searchNodes.keys():
                 now_node = searchNodes[now_key]
-                if now_node.in_openset:
-                    now_node.fscore = now_node.gscore + self.heuristic_cost_estimate(now_node.data, now_goal)
-                    openSet.push(now_node)
+                now_node.fscore = now_node.gscore + self.heuristic_cost_estimate(now_node.data, now_goal)
+                openSet.push(now_node)
 
             while openSet:
                 current = openSet.pop()

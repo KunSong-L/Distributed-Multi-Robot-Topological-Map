@@ -37,13 +37,12 @@ def estimateAvgDis(points):
     disThreshold = np.mean(dis)/2
     return disThreshold
 
-def prepare_icp(pcd, color, volSize, downSave=False, outlier=False, draw=False, pcaTag=False):
-    pcd.paint_uniform_color(color)
+def prepare_icp(pcd, volSize, downSample=False, outlier=False, draw=False, pcaTag=False):
     oldPcd = copy.deepcopy(pcd)
     
     oldNum = np.asarray(oldPcd.points).shape[0]
 
-    if downSave:
+    if downSample:
         while True:
             volSize *= 1.1
             pcd = oldPcd.voxel_down_sample(voxel_size=volSize)
@@ -131,8 +130,8 @@ def ransac_icp(source_pc, target_pc,init_yaw_guess, vis = False):
     disThreshold = 0.2
     lengthThreshold = 0.1
     fitThreshold = 3 * volSize
-    srcKDT, srcFpfhKDT, oldSrc, src, srcFpfh = prepare_icp(source_pc, [1, 0, 0],volSize, downSave=False, outlier=False)
-    tgtKDT, tgtFpfhKDT, oldTgt, tgt, tgtFpfh = prepare_icp(target_pc, [0, 1, 0], volSize, downSave=False ,outlier=False)
+    srcKDT, srcFpfhKDT, oldSrc, src, srcFpfh = prepare_icp(source_pc, volSize, downSave=False, outlier=False)
+    tgtKDT, tgtFpfhKDT, oldTgt, tgt, tgtFpfh = prepare_icp(target_pc, volSize, downSave=False ,outlier=False)
 
     # o3d.visualization.draw_geometries([src, tgt])
 
@@ -240,7 +239,10 @@ if __name__ == "__main__":
 
     source_pc = o3d.io.read_point_cloud(srcPath)
     target_pc = o3d.io.read_point_cloud(tgtPath)
+    import time
+    start = time.time()
+    R,T = ransac_icp(source_pc, target_pc,0,1)
 
-    R,T = ransac_icp(source_pc, target_pc,0)
-
+    print("Global registration took %.3f sec.\n" % (time.time() - start))
+    print(R,T)
     

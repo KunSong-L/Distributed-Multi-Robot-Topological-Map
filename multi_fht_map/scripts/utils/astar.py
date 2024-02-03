@@ -120,17 +120,13 @@ class AStar(ABC, Generic[T]):
         else:
             return reversed(list(_gen()))
 
-    def astar(
-        self, start: T, goal: T, reversePath: bool = False
-    ) -> Union[Iterable[T], None]:
+    def astar(self, start: T, goal: T, reversePath: bool = False) -> Union[Iterable[T], None]:
         if self.is_goal_reached(start, goal):
             return [start]
 
         openSet: OpenSet[SearchNode[T]] = OpenSet()
         searchNodes: SearchNodeDict[T] = SearchNodeDict()
-        startNode = searchNodes[start] = SearchNode(
-            start, gscore=0.0, fscore=self.heuristic_cost_estimate(start, goal)
-        )
+        startNode = searchNodes[start] = SearchNode(start, gscore=0.0, fscore=self.heuristic_cost_estimate(start, goal))
         openSet.push(startNode)
 
         while openSet:
@@ -146,9 +142,7 @@ class AStar(ABC, Generic[T]):
                 if neighbor.closed:
                     continue
 
-                tentative_gscore = current.gscore + self.distance_between(
-                    current.data, neighbor.data
-                )
+                tentative_gscore = current.gscore + self.distance_between(current.data, neighbor.data)
 
                 if tentative_gscore >= neighbor.gscore:
                     continue
@@ -162,23 +156,16 @@ class AStar(ABC, Generic[T]):
                 # update the node
                 neighbor.came_from = current
                 neighbor.gscore = tentative_gscore
-                neighbor.fscore = tentative_gscore + self.heuristic_cost_estimate(
-                    neighbor.data, goal
-                )
+                neighbor.fscore = tentative_gscore + self.heuristic_cost_estimate(neighbor.data, goal)
 
                 openSet.push(neighbor)
 
         return None
 
-    def astar_multigoal(
-        self, start: T, goal: T, reversePath: bool = False
-    ) -> Union[Iterable[T], None]:
-
+    def astar_multigoal(self, start: T, goal: T, reversePath: bool = False) -> Union[Iterable[T], None]:
         openSet: OpenSet[SearchNode[T]] = OpenSet()
         searchNodes: SearchNodeDict[T] = SearchNodeDict()
-        startNode = searchNodes[start] = SearchNode(
-            start, gscore=0.0, fscore=self.heuristic_cost_estimate(start, goal[0])
-        )
+        startNode = searchNodes[start] = SearchNode(start, gscore=0.0, fscore=self.heuristic_cost_estimate(start, goal[0]))
         openSet.push(startNode)
 
         result_path = []
@@ -189,13 +176,13 @@ class AStar(ABC, Generic[T]):
                 path_length.append(searchNodes[now_goal].gscore)
                 continue
 
+
             openSet = OpenSet()
             for now_key in searchNodes.keys():
                 now_node = searchNodes[now_key]
-                if now_node.in_openset:
-                    now_node.fscore = now_node.gscore + self.heuristic_cost_estimate(now_node.data, now_goal)
-                    openSet.push(now_node)
-
+                now_node.fscore = now_node.gscore + self.heuristic_cost_estimate(now_node.data, now_goal)
+                openSet.push(now_node)
+            
             while openSet:
                 current = openSet.pop()
                 if self.is_goal_reached(current.data, now_goal):
@@ -208,9 +195,7 @@ class AStar(ABC, Generic[T]):
                     #neighbor is a searchnode object
                     if neighbor.closed:
                         continue
-                    tentative_gscore = current.gscore + self.distance_between(
-                        current.data, neighbor.data
-                    )
+                    tentative_gscore = current.gscore + self.distance_between(current.data, neighbor.data)
 
                     if tentative_gscore >= neighbor.gscore:
                         #this is a longer road

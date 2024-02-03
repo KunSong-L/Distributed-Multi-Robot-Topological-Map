@@ -66,7 +66,7 @@ class static_fht_map:
         markerid = 0
         
         now_map = self.map
-        ori_map = R.from_matrix(now_map.rotation).as_quat()
+        
         now_vis_color = self.vis_color[self.robot_index]
         for now_vertex in now_map.vertex:
             if now_vertex.local_free_space_rect == [0,0,0,0]:
@@ -79,11 +79,12 @@ class static_fht_map:
             marker.pose.position.x = (x1 + x2)/2.0
             marker.pose.position.y = (y1 + y2)/2.0
             marker.pose.position.z = 0.0
-            marker.pose.orientation.x = ori_map[0]
-            marker.pose.orientation.y = ori_map[1]
-            marker.pose.orientation.z = ori_map[2]
-            marker.pose.orientation.w = ori_map[3]
-            tmp = now_map.rotation.T @ np.array([x2-x1,y2-y1,0])
+            ori_vertex = R.from_matrix(now_vertex.rotation).as_quat()
+            marker.pose.orientation.x = ori_vertex[0]
+            marker.pose.orientation.y = ori_vertex[1]
+            marker.pose.orientation.z = ori_vertex[2]
+            marker.pose.orientation.w = ori_vertex[3]
+            tmp = now_vertex.rotation.T @ np.array([x2-x1,y2-y1,0])
             
             marker.scale.x = abs(tmp[0])
             marker.scale.y = abs(tmp[1])
@@ -132,6 +133,41 @@ class static_fht_map:
         self.marker_pub.publish(marker_array)
         self.edge_pub.publish(edge_array)
 
+    def from_start_point_to_every_vertex(self,start_point):
+        # 输入一个起点，给出其到任意一个节点之间的距离
+        if len(self.map.vertex) == 0:
+            return []
+        start_in_vertex_index = self.dual_vertex_of_a_point(start_point)
+
+        vertex_index = [i for i in range(len(self.map.vertex))]
+        vertex_path_length = [[] for i in range(len(start_in_vertex_index))]
+
+        start_point_pose = np.array([start_point[0],start_point[1]])
+        
+        for index, now_start in enumerate(start_in_vertex_index):
+            now_start_vertex_pose = np.array(self.map.vertex[now_start].pose[0:2])
+            start_point_to_vertex_length = np.linalg.norm(start_point_pose - now_start_vertex_pose)
+
+            #计算路径
+            topo_map = topo_map_path(self.adj_list,now_start, vertex_index)
+            topo_map.get_path()
+            topo_path_length = copy.deepcopy(topo_map.path_length) #list
+
+            path_length = [now_length + start_point_to_vertex_length for now_length in topo_path_length]
+            vertex_path_length[index] = path_length
+        # print(vertex_path_length)
+        # print(self.adj_list)
+        vertex_path_length = np.array(vertex_path_length)
+
+        shortest_path = np.min(vertex_path_length,axis=0)
+        
+        return shortest_path
+
+
+
+        
+
+
     def topo_path_planning(self,point1,point2,consider_ori = True):
         #输入两个点: point1/2: 格式可能为[x,y,yaw]或者[x,y]
         #输出两个点之间规划的一条轨迹和轨迹的时间代价
@@ -139,15 +175,12 @@ class static_fht_map:
         if len(self.map.vertex) == 0:
             return np.linalg.norm(point1[0:2] - point2[0:2]),[point1,point2] #TODO
         
-        point1_pixel = (np.array(point1[0:2])- np.array(self.map_origin))/self.map_resolution
-        point2_pixel = (np.array(point2[0:2])- np.array(self.map_origin))/self.map_resolution
-        if self.free_space_line(point1_pixel,point2_pixel):
-            return self.path_distance_cost(point1,point2,[]),[point1,point2]
-
         start_in_vertex_index = self.dual_vertex_of_a_point(point1)
         target_in_vertex_index = self.dual_vertex_of_a_point(point2)
         
-        
+        if start_in_vertex_index==target_in_vertex_index:
+            return self.path_distance_cost(point1,point2,[]),[point1,point2]
+
         #get total id and pose
         shortest_path_length = 1e100
         target_path = None
@@ -201,62 +234,6 @@ class static_fht_map:
             self.adj_list[first_id].append((last_id, cost))
             self.adj_list[last_id].append((first_id, cost))        
 
-    
-    def free_space_line_map(self,point1,point2,now_global_map):
-        # check whether a line cross a free space
-        # point1 and point2 in pixel frame
-        height, width = now_global_map.shape
-
-        x1, y1 = point1
-        x2, y2 = point2
-
-        distance = max(abs(x2 - x1), abs(y2 - y1))
-
-        step_x = (x2 - x1) / distance
-        step_y = (y2 - y1) / distance
-
-        for i in range(int(distance) + 1):
-            x = int(x1 + i * step_x)
-            y = int(y1 + i * step_y)
-            if x < 0 or x >= width or y < 0 or y >= height or now_global_map[y, x] != 0:
-                # if now_global_map[y, x] != 255:#排除掉经过unknown的部分
-                return False
-        return True
-
-    def free_space_line(self,point1,point2):
-        # check whether a line cross a free space
-        # (这里把unknown也作为free space，主要是考虑了地图更新速度比机器人慢，机器人容易驶入unkown free space)
-        # point1 and point2 in pixel frame
-        now_global_map = self.global_map
-        height, width = now_global_map.shape
-
-        x1, y1 = point1
-        x2, y2 = point2
-
-        distance = max(abs(x2 - x1), abs(y2 - y1))
-        if distance==0:
-            return False
-        step_x = (x2 - x1) / distance
-        step_y = (y2 - y1) / distance
-
-        for i in range(int(distance) + 1):
-            x = int(x1 + i * step_x)
-            y = int(y1 + i * step_y)
-            if x < 0 or x >= width or y < 0 or y >= height or now_global_map[y, x] != 0:
-                if now_global_map[y, x] != 255:#排除掉经过unknown的部分
-                    return False
-        return True
-
-    def expanded_free_space_line(self,point1,point2, offset_length):
-        x1, y1 = point1
-        x2, y2 = point2
-        vertical_vector = np.array([y2 - y1, x1 - x2])
-        vertical_vector = vertical_vector/ np.linalg.norm(vertical_vector)
-        offset_points1 = [point1 + vertical_vector*offset_length, point2 + vertical_vector*offset_length]
-        offset_points2 = [point1 - vertical_vector*offset_length, point2 - vertical_vector*offset_length]
-
-        return self.free_space_line(point1, point2) and self.free_space_line(offset_points1[0], offset_points1[1]) and self.free_space_line(offset_points2[0], offset_points2[1])
-
     def dual_vertex_of_a_point(self,point):
         #给定一个地图上的点，返回空白区域包含了这个点的所有vertex
         #如果上述条件不存在，则返回一个最近的点
@@ -264,8 +241,14 @@ class static_fht_map:
         start_y = point[1]
         start_in_vertex_index = []
         for i in range(len(self.map.vertex)):
-            now_free_space = self.map.vertex[i].local_free_space_rect
-            if now_free_space[0] < start_x and start_x < now_free_space[2] and now_free_space[1] < start_y and start_y < now_free_space[3]:
+            x1,y1,x2,y2 = self.map.vertex[i].local_free_space_rect
+            #旋转一下local free space
+            rotated_xy = self.map.vertex[i].rotation[0:2,0:2].T @ np.array([[x1,x2],[y1,y2]])
+            roted_point = self.map.vertex[i].rotation[0:2,0:2].T @ np.array([[start_x],[start_y]])
+            roted_x = roted_point[0,0]
+            roted_y = roted_point[1,0]
+
+            if rotated_xy[0,0] < roted_x and start_x < roted_x and rotated_xy[1,0] < roted_y and roted_y < rotated_xy[1,1]:
                 start_in_vertex_index.append(i)
         
         if len(start_in_vertex_index) == 0:

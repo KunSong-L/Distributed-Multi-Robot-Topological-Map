@@ -102,7 +102,7 @@ class multi_robot_tf_manager():
         a_small_number = 1e-10
         eigen_vale,eigen_vector = np.linalg.eig(self.mat_lap_ReEst)
         zero_eigen_value = abs(eigen_vale)<a_small_number
-        sub_grapg_vector = eigen_vector[:,zero_eigen_value]>a_small_number
+        sub_grapg_vector = np.abs(eigen_vector[:,zero_eigen_value])>a_small_number
         return sub_grapg_vector.T #m*robot_number bool vector
 
     def A_mat_to_adj_list(self,A_mat):
@@ -129,6 +129,7 @@ class multi_robot_tf_manager():
                 break
         
         if not connected_flag:
+            print("not connected", subgraphs)
             return None
         adj_list = self.A_mat_to_adj_list(self.mat_A_ReEst)
         topo_map = topo_map_path(adj_list,robot1_index, [robot2_index])

@@ -56,12 +56,10 @@ class Vertex:
         self.localMap = localMap
         self.local_laserscan_angle = local_laserscan_angle
         # self.local_laserscan = local_laserscan #2*n array
-        self.navigableDirection = []
-        self.frontierPoints = []
-        self.frontierDistance = []
         self.local_image = local_image
         self.descriptor_infor = 0
         self.local_free_space_rect = [0,0,0,0] #x1,y1,x2,y2 in map frame  ; x1< x2,y1 <y2
+        self.rotation = np.eye(3) #rotation for local free space, 3x3 rotation matrix
         
         if descriptor is not None:
             self.descriptor_infor = calculate_entropy(descriptor)
@@ -72,6 +70,7 @@ class Support_Vertex:
         self.id = id
         self.pose = pose
         self.local_free_space_rect = [0,0,0,0]
+        self.rotation = np.eye(3) #rotation for local free space
 
 class Edge:
     def __init__(self, id, link) -> None:
@@ -134,70 +133,4 @@ class TopologicalMap:
         self.trans_vector = copy.deepcopy(map_frame_pose[1])
             
 
-    
-    def upgradeFrontierPoints(self, vertex_id=-1, type="new", resolution=0.05):
-        picked_vertex = None
-        picked_vertex_id = 0
-        if type == "new":
-            #准备在新加入的节点附近计算一系列前沿点
-            for i in range(len(self.vertex)):
-                vertex = self.vertex[i]
-                if vertex.robot_name == self.robot_name and vertex.id == vertex_id:
-                    picked_vertex = vertex
-                    picked_vertex_id = i
-                    break
-        elif type == "old":
-            picked_vertex = self.vertex[vertex_id]
-            picked_vertex_id = vertex_id
-        shape = picked_vertex.localMap.shape
-        center = np.array([int(shape[0]/2), int(shape[1]/2)])
-        if vertex_id == -1:
-            pass
-        frontiers = get_frontier_points(picked_vertex.localMap,resolution=self.map_resolution)#返回一系列边界中心
-
-        temp_frontier_dis = []
-        temp_frontier_pos = []
-        temp_angle = []
-        #计算边界点距离中心的距离、在局部坐标系下的位置、角度
-        for front in frontiers:
-            front = np.array([front[0], front[1]])# in image frame
-            dis = np.sqrt(np.sum(np.square(front-center))) * resolution
-            frontier_local_frame = np.array([front[1] - center[1], front[0]-center[0] ])*resolution
-            angle = math.degrees(math.atan2(frontier_local_frame[1],frontier_local_frame[0]))
-
-            temp_frontier_dis.append(dis)
-            temp_frontier_pos.append(frontier_local_frame)# frontier In local frame
-            temp_angle.append(angle)
-        
-        if len(temp_angle) < len(self.vertex[picked_vertex_id].navigableDirection) and type=="old":
-            self.vertex[picked_vertex_id].frontierDistance = temp_frontier_dis
-            self.vertex[picked_vertex_id].frontierPoints = temp_frontier_pos
-            self.vertex[picked_vertex_id].navigableDirection = temp_angle
-        #一般只有new这个情况
-        if type == "new":
-            self.vertex[picked_vertex_id].frontierDistance = temp_frontier_dis
-            self.vertex[picked_vertex_id].frontierPoints = temp_frontier_pos
-            self.vertex[picked_vertex_id].navigableDirection = temp_angle
-
-        return picked_vertex_id
-    
-    def plot(self, size, vcolor=(0, 0, 255), ecolor=(0, 255, 0)) -> np.ndarray:
-        mapv = np.zeros([size, size, 3], np.uint8)
-        pose = dict()
-        for vertex in self.vertex:
-            pose[vertex.id] = (int((vertex.pose[0]+5)/10 * size), int((5-vertex.pose[1])/10 * size))
-            mapv = cv2.circle(mapv, pose[vertex.id], 3, vcolor, -1)
-        for edge in self.edge:
-            mapv = cv2.line(mapv, pose[edge.link[0]], pose[edge.link[1]], ecolor)
-        return mapv
-    
-    def vertex_num(self) -> int:
-        return len(self.vertex)
-    
-    def displayNavigableDirection(self):
-        for vertex in self.vertex:
-            print("vertex: ", vertex.id)
-            print("direction:")
-            for direction in vertex.navigableDirection:
-                print(direction)
             
