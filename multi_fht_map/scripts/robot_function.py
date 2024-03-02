@@ -261,12 +261,14 @@ def find_local_max_rect(image, seed_point, map_origin, map_reso):
 def calculate_vertex_info(frontiers, cluser_eps=1, cluster_min_samples=7):
     # input: frontier; DBSCAN eps; DBSCAN min samples
     # output: how many vertex in this cluster
+    print("start dbscan")
     dbscan = DBSCAN(eps=cluser_eps, min_samples=cluster_min_samples)
     labels = dbscan.fit_predict(frontiers)
+    print(labels)
     label_counts = Counter(labels)
     label_counts[-1] = 0
     vertex_infor = [label_counts[now_label] for now_label in labels]
-
+    print("calculated infor",vertex_infor)
     return vertex_infor
 
 def calculate_infor(image):
@@ -410,9 +412,10 @@ def change_frame_multi(points_1, T_1_2):
     #point_1: 向量[x,y,yaw]或者[x,y]
     #返回：在2坐标系下的point位置
     R_1_2 = R.from_euler('z', T_1_2[2], degrees=False).as_matrix()
-    t_1_2 = np.array([T_1_2[0],T_1_2[1],0]).reshape(-1,1)
-    T_1_2 = np.block([[R_1_2,t_1_2],[np.zeros((1,4))]])
+    t_1_2 = np.array([T_1_2[0],T_1_2[1]]).reshape(-1,1)
+    T_1_2 = np.block([[R_1_2[0:2,0:2],t_1_2],[np.zeros((1,3))]])
     T_1_2[-1,-1] = 1
+    T_1_2_inv = np.linalg.inv(T_1_2)
     
     result = []
     input_length = 3
@@ -420,19 +423,22 @@ def change_frame_multi(points_1, T_1_2):
         input_length = len(point_1)
         if input_length==2:
             point_1 = [point_1[0],point_1[1],0]
-
-        R_1_point = R.from_euler('z', point_1[2], degrees=False).as_matrix()
-        t_1_point = np.array([point_1[0],point_1[1],0]).reshape(-1,1)
-        T_1_point = np.block([[R_1_point,t_1_point],[np.zeros((1,4))]])
+        theta = point_1[2]
+        sin_theta = np.sin(theta)
+        cos_theta = np.cos(theta)
+        R_1_point = np.array([[cos_theta,-sin_theta],[sin_theta,cos_theta]])
+        t_1_point = np.array([point_1[0],point_1[1]]).reshape(-1,1)
+        T_1_point = np.block([[R_1_point,t_1_point],[np.zeros((1,3))]])
         T_1_point[-1,-1] = 1
 
-        T_2_point =  np.linalg.inv(T_1_2) @ T_1_point
-        rot = R.from_matrix(T_2_point[0:3,0:3]).as_euler('xyz',degrees=False)[2]
-
+        T_2_point =   T_1_2_inv @ T_1_point
+        rot = np.arctan2(T_2_point[1,0],T_2_point[0,0])
         result.append([T_2_point[0,-1], T_2_point[1,-1], rot])
-
     result = np.array(result)
-    return result[:,0:input_length]
+    if len(result) == 0:
+        return np.array(result)
+    else:
+        return result[:,0:input_length]    
 
 def change_frame(point_1, T_1_2):
     #根据转换关系把在1坐标系下point转换到2坐标系下
@@ -456,3 +462,43 @@ def change_frame(point_1, T_1_2):
     result = [T_2_point[0,-1], T_2_point[1,-1], rot]
     return result[0:input_length]
 
+class voronoi_region():
+    def __init__(self,points,keys=None) -> None:
+        if len(points.shape) == 1:
+            points = [points]
+        self.points = points
+        self.keys = keys
+
+    
+    def find_region(self,query_points):
+        #return the index of each region
+        region_index = []
+        if len(query_points.shape) == 1:
+            query_points = [query_points]
+        for now_point in query_points:
+            now_index = np.argmin(np.linalg.norm(self.points - now_point, axis=1))
+            region_index.append(now_index)
+        
+        return np.array(region_index)
+
+    def keys_of_region(self,region_index):
+        region_keys = [self.keys[index] for index in region_index]
+        return region_keys
+
+def four_point_of_a_rect(BL_point,UR_point,rot_theta):
+    # BL_point:[x1,y1]; UR_point: [x2,y2]
+    # x1 < x2, y1 < y2
+    # rot_theta: rotation of the rect
+    x1,y1 = BL_point
+    x2,y2 = UR_point
+    sin_theta = np.sin(rot_theta)
+    cos_theta = np.cos(rot_theta)
+    tmp = np.array([[cos_theta, - sin_theta],[sin_theta,cos_theta]]).T @ np.array([x2-x1,y2-y1])
+    x_length = tmp[0]
+    y_length = tmp[1]
+    x3 = x1 + x_length * cos_theta
+    y3 = y1 + x_length * sin_theta
+    x4 = x1 - y_length * sin_theta
+    y4 = y1 + y_length * cos_theta
+
+    return [(x1,y1), (x3,y3), (x2,y2),(x4,y4)]

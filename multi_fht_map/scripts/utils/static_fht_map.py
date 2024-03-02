@@ -2,39 +2,14 @@
 #创建一张静止的fhtmap
 from tkinter.constants import Y
 import rospy
-from sensor_msgs.msg import Image, LaserScan
-import rospkg
-import tf
-from std_msgs.msg import String
 from visualization_msgs.msg import Marker, MarkerArray
-from laser_geometry import LaserProjection
-import message_filters
-from self_topoexplore.msg import TopoMapMsg
-from TopoMap import Support_Vertex, Vertex, Edge, TopologicalMap
-from utils.imageretrieval.imageretrievalnet import init_network
-from utils.pointnet_model import PointNet_est
-from utils.imageretrieval.extract_feature import cal_feature
-from utils.topomap_bridge import TopomapToMessage
-from utils.astar import grid_path, topo_map_path
-import torch
-from torch.utils.model_zoo import load_url
-from torchvision import transforms
-import os
-import cv2
-from cv_bridge import CvBridge
+from TopoMap import  Vertex, TopologicalMap
+from utils.astar import topo_map_path
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-import time
 import copy
 from robot_function import *
-import sys
-import scipy.ndimage
-from nav_msgs.msg import OccupancyGrid
 
-
-
-debug_path = "/home/master/debug/test1/"
-save_result = False
 
 class static_fht_map:
     def __init__(self, robot_name,topomap):#输入当前机器人，其他机器人的id list
@@ -152,6 +127,8 @@ class static_fht_map:
             topo_map = topo_map_path(self.adj_list,now_start, vertex_index)
             topo_map.get_path()
             topo_path_length = copy.deepcopy(topo_map.path_length) #list
+            if len(topo_path_length) != len(self.map.vertex):
+                print("Failed to find a path. adj mat may be not connected")
 
             path_length = [now_length + start_point_to_vertex_length for now_length in topo_path_length]
             vertex_path_length[index] = path_length
@@ -162,10 +139,6 @@ class static_fht_map:
         shortest_path = np.min(vertex_path_length,axis=0)
         
         return shortest_path
-
-
-
-        
 
 
     def topo_path_planning(self,point1,point2,consider_ori = True):
@@ -220,15 +193,13 @@ class static_fht_map:
 
 
     def edge_to_adj_list(self):
+        for now_vertex in self.map.vertex:
+            self.adj_list[now_vertex.id]  = []
         for now_edge in self.map.edge:
             first_id = now_edge.link[0][1]
             last_id = now_edge.link[1][1]
             pose1 = self.map.vertex[first_id].pose[0:2]
             pose2 = self.map.vertex[last_id].pose[0:2]
-            if first_id not in self.adj_list.keys():
-                self.adj_list[first_id]  = []
-            if last_id not in self.adj_list.keys():
-                self.adj_list[last_id]  = []
             
             cost = ((pose1[0] - pose2[0])**2 + (pose1[1] - pose2[1])**2)**0.5
             self.adj_list[first_id].append((last_id, cost))

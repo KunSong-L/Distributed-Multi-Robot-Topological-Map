@@ -17,10 +17,10 @@ from collections import Counter
 
 
 class RobotNode:
-    def __init__(self, robot_name):#输入当前机器人name
+    def __init__(self, robot_name,use_clustered_frontier = False):#输入当前机器人name
         self.self_robot_name = robot_name
         self.robot_index = int(robot_name[-1])-1 #start from 0
-        
+        self.perform_rend_flag = False
         #robot data
         self.pose = [0,0,0] # x y yaw angle in degree
         self.erro_count = 0
@@ -28,6 +28,7 @@ class RobotNode:
 
         self.map_resolution = float(rospy.get_param('map_resolution', 0.05))
         self.map_origin = [0,0]
+        self.use_clustered_frontier = use_clustered_frontier
         
         self.vis_color = np.array([[0xFF, 0x7F, 0x51], [0xD6, 0x28, 0x28],[0xFC, 0xBF, 0x49],[0x00, 0x30, 0x49],[0x1E, 0x90, 0xFF]])/255.0
         # get tf
@@ -47,12 +48,11 @@ class RobotNode:
 
         self.frontier_publisher = rospy.Publisher(robot_name+'/frontier_points', Marker, queue_size=1)
         self.need_new_goal_pub = rospy.Publisher('/need_new_goal', Int32, queue_size=100) #是否需要一个新的前沿点
+        self.last_goal_time = rospy.Time.now().to_sec()
+        self.max_goal_duration = 10
+        rospy.Subscriber(robot_name+"/map", OccupancyGrid, self.map_grid_callback, queue_size=1)
 
-        rospy.Subscriber(
-            robot_name+"/map", OccupancyGrid, self.map_grid_callback, queue_size=1)
-
-        rospy.Subscriber(
-            robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
+        rospy.Subscriber(robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
 
 
         self.actoinclient.wait_for_server()
@@ -61,6 +61,7 @@ class RobotNode:
         goal_message, goal_marker, self.goal = self.get_move_goal_and_marker(self.self_robot_name,move_goal,extend_length)#offset = 0
         self.actoinclient.send_goal(goal_message)
         self.goal_pub.publish(goal_marker)
+        self.last_goal_time = rospy.Time.now().to_sec()
     
     def get_move_goal_and_marker(self, robot_name, goal,extend_length):
         #next angle should be next goal direction
@@ -78,7 +79,10 @@ class RobotNode:
 
         new_goal = goal + extended_goal_vector #把目标向前延伸一点
         new_goal_pixel = np.array([int((new_goal[0] - self.map_origin[0])/self.map_resolution), int((new_goal[1] - self.map_origin[1])/self.map_resolution)])
-        if self.global_map[new_goal_pixel[1],new_goal_pixel[0]] != 255:
+        local_range = 5
+        local_map_near_goal = self.global_map[new_goal_pixel[1]-local_range:new_goal_pixel[1]+local_range, new_goal_pixel[0]-local_range:new_goal_pixel[0]+local_range]
+
+        if self.global_map[new_goal_pixel[1],new_goal_pixel[0]] != 255 or np.any(local_map_near_goal == 100):
             new_goal = goal #如果new goal是一个已经探索过得地方，那么就之间发原来的位置
 
         move_direction = np.arctan2(goal_vector[1],goal_vector[0])
@@ -103,7 +107,7 @@ class RobotNode:
         pose.x = new_goal[0]
         pose.y = new_goal[1]
         goal_marker.pose.position = pose
-        return goal_message, goal_marker, goal
+        return goal_message, goal_marker, new_goal
 
     def update_robot_pose(self):
         # ----get now pose----  
@@ -135,20 +139,22 @@ class RobotNode:
         frontier_marker.color.g = self.vis_color[0][1]
         frontier_marker.color.b = self.vis_color[0][2]
         frontier_marker.color.a = 0.7
-        # for frontier in self.total_frontier:
-        #     point_msg = Point()
-        #     point_msg.x = frontier[0]
-        #     point_msg.y = frontier[1]
-        #     point_msg.z = 0.2
-        #     frontier_marker.points.append(point_msg)
-        for frontier in self.clustered_frontier:
-            point_msg = Point()
-            point_msg.x = frontier[0]
-            point_msg.y = frontier[1]
-            point_msg.z = 0.3
-            frontier_marker.points.append(point_msg)
+        if self.use_clustered_frontier:
+            for frontier in self.clustered_frontier:
+                point_msg = Point()
+                point_msg.x = frontier[0]
+                point_msg.y = frontier[1]
+                point_msg.z = 0.3
+                frontier_marker.points.append(point_msg)
+        else:
+            for frontier in self.total_frontier:
+                point_msg = Point()
+                point_msg.x = frontier[0]
+                point_msg.y = frontier[1]
+                point_msg.z = 0.2
+                frontier_marker.points.append(point_msg)
+        
         self.frontier_publisher.publish(frontier_marker)
-        # --------------finish visualize frontier---------------
 
     def map_grid_callback(self, data):
         #如果当前没有目标，就发送需要VRP assign的消息
@@ -164,31 +170,57 @@ class RobotNode:
 
         try:
             #detect frontier
-            current_frontier = detect_frontier(self.global_map) * self.map_resolution + np.array(self.map_origin)
+            #only detect frontier in local map
+            current_loc_pixel = [0,0]
+            local_range = int(10/self.map_resolution)
+            current_loc_pixel[0] = int((self.pose[1] - data.info.origin.position.y)/data.info.resolution)
+            current_loc_pixel[1] = int((self.pose[0] - data.info.origin.position.x)/data.info.resolution)
+            local_grid_map = copy.deepcopy(self.global_map[current_loc_pixel[0]-local_range:current_loc_pixel[0]+local_range, current_loc_pixel[1]-local_range:current_loc_pixel[1]+local_range])
+            detected_frontiers = detect_frontier(local_grid_map)
+            detected_frontiers_origin = detected_frontiers + np.array([current_loc_pixel[1] - local_range,current_loc_pixel[0] - local_range])
+
+            current_frontier =  detected_frontiers_origin* self.map_resolution + np.array(self.map_origin)
+
             self.total_frontier = np.vstack((self.total_frontier, current_frontier))
-            ds_size = 0.15
+            ds_size = 0.5
             self.total_frontier = sparse_point_cloud(self.total_frontier, ds_size)
         except:
-            pass
+            print("error in detect frontier")
+        
         self.update_robot_pose()
         self.update_frontier()
-        self.clustered_frontier = self.frontier_cluster(self.total_frontier,0.4)
+
+        #如果上一个目标已经过去太久了，则更新一个
+        if not self.perform_rend_flag:
+            now_time = rospy.Time.now().to_sec()
+            if (now_time - self.last_goal_time) > self.max_goal_duration:
+                self.need_a_new_goal()
+
+        if self.use_clustered_frontier:
+            self.clustered_frontier = self.frontier_cluster(self.total_frontier,0.4).reshape((-1,2))
+        else:
+            self.clustered_frontier = self.total_frontier
+
         self.visulize_frontier()
 
     def move_base_status_callback(self, data):
-        try:
-            status = data.status_list[-1].status
-        # print(status)
-        
-            if status >= 3:
-                self.erro_count +=1
-            if self.erro_count >= 3:
-                if len(self.goal) != 0:
-                    self.dead_area.append(copy.deepcopy(self.goal))
-                self.erro_count = 0
-                self.need_a_new_goal()
-        except:
-            pass
+        if len(data.status_list) == 0:
+            return
+
+        status = data.status_list[-1].status
+        if status == 3:
+            #goal reached
+            self.need_a_new_goal()
+        elif status > 3:
+            self.erro_count +=1
+
+        if self.erro_count >= 1:
+            if len(self.goal) != 0:
+                print("robot ",self.robot_index +1, " add a dead area",self.goal)
+                self.dead_area.append(copy.deepcopy(self.goal))
+            self.erro_count = 0
+            self.need_a_new_goal()
+
 
     def frontier_cluster(self,frontiers, cluser_eps=0.7, cluster_min_samples=7):
         # input: frontier; DBSCAN eps; DBSCAN min samples
@@ -206,12 +238,16 @@ class RobotNode:
 
         return np.array(clustered_frontier)
 
-    def is_explored_frontier(self,pose_in_world,clustered=False):
+    def is_explored_frontier(self,pose_in_world):
         #input pose in world frame
-        if clustered:
+        if self.use_clustered_frontier:
             frontier_position = np.array([int((pose_in_world[0] - self.map_origin[0])/self.map_resolution), int((pose_in_world[1] - self.map_origin[1])/self.map_resolution)])
             expored_range = 4
             temp_map = self.global_map[frontier_position[1]-expored_range:frontier_position[1]+expored_range+1, frontier_position[0]-expored_range:frontier_position[0]+expored_range+1]
+            for now_area_pos in self.dead_area:
+                if np.linalg.norm(now_area_pos - pose_in_world) < 2: #对于以前不可达的frontier直接删掉
+                    return True
+
             if np.all(temp_map == 0): #Only explored area in this region
                 return True
             else:
@@ -223,10 +259,14 @@ class RobotNode:
             if np.logical_not(np.any(temp_map == 255)): #unkown place is not in this point
                 return True
 
-            expored_range = 4
+            expored_range = 6
             temp_map = self.global_map[frontier_position[1]-expored_range:frontier_position[1]+expored_range, frontier_position[0]-expored_range:frontier_position[0]+expored_range]
-            if np.any(np.abs(temp_map - 100) < 40):# delete near obstcal frontier
+            if np.any(temp_map == 100):# delete near obstcal frontier
                 return True
+
+            for now_area_pos in self.dead_area:
+                if np.linalg.norm(now_area_pos - pose_in_world) < 2: #对于以前不可达的frontier直接删掉
+                    return True
 
             return False
 
@@ -247,15 +287,24 @@ class RobotNode:
             for now_area_pos in self.dead_area:
                 if np.linalg.norm(now_area_pos - frontier) < 2: #对于以前不可达的frontier直接删掉
                     delete_index.append(index)
-        self.total_frontier = np.delete(self.total_frontier, delete_index, axis = 0)
+        try:
+            self.total_frontier = np.delete(self.total_frontier, delete_index, axis = 0)
+        except:
+            pass
+
 
         #goal in map frame
         now_goal = self.goal
+        
         if now_goal.size > 0:
+            # near the goal 
+            if np.linalg.norm(np.array(now_goal[0:2]) - np.array(self.pose[0:2])) < 1:
+                self.need_a_new_goal()
+                return
             frontier_position = np.array([int((now_goal[0] - self.map_origin[0])/self.map_resolution), int((now_goal[1] - self.map_origin[1])/self.map_resolution)])
             expored_range = 4
             temp_map = self.global_map[frontier_position[1]-expored_range:frontier_position[1]+expored_range+1, frontier_position[0]-expored_range:frontier_position[0]+expored_range+1]
-            if np.any(np.abs(temp_map - 100) < 40):
+            if np.any(temp_map == 100):
                 # print("Target near obstacle! Change another goal!")
                 self.need_a_new_goal()
                 return

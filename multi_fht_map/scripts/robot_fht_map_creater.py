@@ -1,6 +1,5 @@
 #!/usr/bin/python3.8
 #收集信息构建FHT-Map，机器人不运动
-from tkinter.constants import Y
 import rospy
 from sensor_msgs.msg import Image, LaserScan
 import rospkg
@@ -37,13 +36,14 @@ debug_path = "/home/master/debug/test1/"
 save_result = False
 
 class fht_map_creater:
-    def __init__(self, robot_name,main_node_density=25):#输入当前机器人，其他机器人的id list
+    def __init__(self, robot_name,main_node_density=25,topo_refine = "strong"):#输入当前机器人，其他机器人的id list
         rospack = rospkg.RosPack()
         self.self_robot_name = robot_name
         self.robot_index = int(robot_name[-1])-1
         path = rospack.get_path('multi_fht_map')
 
         #network part
+        self.topo_refine = topo_refine #["no", "weak", "strong"]
         network = rospy.get_param("~network")
         self.network_gpu = rospy.get_param("~platform")
         if network in PRETRAINED:
@@ -55,6 +55,7 @@ class fht_map_creater:
         point_net_path = os.path.join(current_path,'../data/networks', 'my_pointnet_20231016151924.pth') # Load PointNet
         self.pointnet =  PointNet_est(k=3)
         self.pointnet.load_state_dict(torch.load(point_net_path))  #load param of network
+        self.pointnet.cuda()
         self.pointnet.eval()
 
         net_params = get_net_param(state)
@@ -155,12 +156,12 @@ class fht_map_creater:
         local_laserscan_angle = copy.deepcopy(self.local_laserscan_angle )
         valid_indices = np.isfinite(local_laserscan_angle)
         local_laserscan_angle[~valid_indices] = 8
+        local_laserscan_angle[local_laserscan_angle > 8] = 8#对不同range的雷达做一个操作
         local_laserscan  = np.array(local_laserscan_angle* self.laser_scan_cos_sin)
         now_laserscan = np.vstack((local_laserscan,np.zeros(local_laserscan.shape[1])))
         lidar_data_torch = torch.tensor(now_laserscan).float()
-        lidar_data_torch = lidar_data_torch.view((-1,3,360))
-        self.pointnet.to('cpu')
-        output = self.pointnet(lidar_data_torch).detach().numpy().reshape(-1)[0]
+        lidar_data_torch = lidar_data_torch.view((-1,3,360)).cuda()
+        output = self.pointnet(lidar_data_torch).cpu().detach().numpy().reshape(-1)[0]
 
         return output
 
@@ -331,8 +332,16 @@ class fht_map_creater:
             # 不发布拓扑地图，直接在外层类读取
             # topomap_message = TopomapToMessage(self.map)    
             # self.topomap_pub.publish(topomap_message) # publish topomap important!      
+            
+            if self.topo_refine == "no":
+                refine_flag_list = []
+            elif self.topo_refine == "weak": #refine when create main node
+                refine_flag_list = [1]
+            else: #refine when create any node
+                refine_flag_list = [1,2]
 
-            if create_a_vertex_flag ==1 or create_a_vertex_flag ==2: 
+
+            if create_a_vertex_flag in refine_flag_list: 
                 refine_topo_map_msg = String()
                 refine_topo_map_msg.data = "Start_find_path!"
                 self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path

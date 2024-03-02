@@ -15,13 +15,21 @@
     <arg name="debug" value="false"/>
   </include>
 
-    <arg name="robot_1_x" value="10"/>
-    <arg name="robot_1_y" value="10"/>
-    <arg name="robot_1_yaw" value="0"/>
+    <arg name="robot_1_x" value="5"/>
+    <arg name="robot_1_y" value="15"/>
+    <arg name="robot_1_yaw" value="-1.57"/>
 
-    <arg name="robot_2_x" value="49"/>
-    <arg name="robot_2_y" value="17"/>
-    <arg name="robot_2_yaw" value="0"/>
+    <arg name="robot_2_x" value="26"/>
+    <arg name="robot_2_y" value="33"/>
+    <arg name="robot_2_yaw" value="1.57"/>
+
+    <arg name="robot_3_x" value="49"/>
+    <arg name="robot_3_y" value="17"/>
+    <arg name="robot_3_yaw" value="1.57"/>
+
+    <!-- <arg name="robot_3_x" value="9"/>
+    <arg name="robot_3_y" value="10"/>
+    <arg name="robot_3_yaw" value="1.57"/> -->
 
  
     <group ns="robot1">
@@ -39,10 +47,20 @@
             <arg name="init_pose" value="-x $(arg robot_2_x) -y $(arg robot_2_y) -z 0.12 -Y $(arg robot_2_yaw)"/>
         </include>
     </group>
+
+    <group ns="robot3">
+        <include file="$(find turtlebot3sim)/launch/includes/robot.launch.xml">
+            <arg name="robot_name" value="robot3"/>
+            <arg name="model" value="$(arg model)"/>
+            <arg name="init_pose" value="-x $(arg robot_3_x) -y $(arg robot_3_y) -z 0.12 -Y $(arg robot_3_yaw)"/>
+        </include>
+    </group>
+
     <!-- <Provide Gound Truth Value for Visualization> -->
     <node pkg="tf" type="static_transform_publisher" name="tf_publisher0" args="10 10 0.12 0 0 0 /robot0/map /original_map 100" />
     <node pkg="tf" type="static_transform_publisher" name="tf_publisher1" args="$(arg robot_1_x) $(arg robot_1_y) 0.12 $(arg robot_1_yaw) 0 0 /robot0/map /robot1/map 100" />
     <node pkg="tf" type="static_transform_publisher" name="tf_publisher2" args="$(arg robot_2_x) $(arg robot_2_y) 0.12 $(arg robot_2_yaw) 0 0 /robot0/map /robot2/map 100" />
+    <node pkg="tf" type="static_transform_publisher" name="tf_publisher3" args="$(arg robot_3_x) $(arg robot_3_y) 0.12 $(arg robot_3_yaw) 0 0 /robot0/map /robot3/map 100" />
 
     <node name="map_server" pkg="map_server" type="map_server" args="$(find fht_map)/data/map_data/large_indoor/map.yaml">
         <param name="frame_id" value="original_map"/>

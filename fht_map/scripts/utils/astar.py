@@ -194,12 +194,13 @@ class AStar(ABC, Generic[T]):
                 now_node = searchNodes[now_key]
                 now_node.fscore = now_node.gscore + self.heuristic_cost_estimate(now_node.data, now_goal)
                 openSet.push(now_node)
-
+            reachable_flag = False
             while openSet:
                 current = openSet.pop()
                 if self.is_goal_reached(current.data, now_goal):
                     result_path.append(list(self.reconstruct_path(current, reversePath)))
                     path_length.append(current.gscore)
+                    reachable_flag = True
                     break
 
                 current.closed = True
@@ -226,7 +227,9 @@ class AStar(ABC, Generic[T]):
                     neighbor.fscore = tentative_gscore + self.heuristic_cost_estimate(neighbor.data, now_goal)
 
                     openSet.push(neighbor)
-
+            if not reachable_flag:
+                result_path.append(None)
+                path_length.append(1e10)
         return result_path, path_length
 
 ################################################################################*

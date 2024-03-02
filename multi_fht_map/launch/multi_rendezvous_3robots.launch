@@ -1,10 +1,11 @@
 <launch>
 
   <arg name="model" default="burger"/>
-  <node name="rviz0" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot0explore.rviz" />
+  <node name="total_rviz" pkg="rviz" type="rviz" args="-d $(find multi_fht_map)/rviz/3robots.rviz" />
+  <!-- <node name="rviz0" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot0explore.rviz" />
   <node name="rviz1" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot1explore.rviz" />
   <node name="rviz2" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot2explore.rviz" />
-  <node name="rviz3" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot3explore.rviz" />
+  <node name="rviz3" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot3explore.rviz" /> -->
 
 
   <node name="robot_explore" pkg="multi_fht_map" type="multi_rendezvous.py" output="screen">

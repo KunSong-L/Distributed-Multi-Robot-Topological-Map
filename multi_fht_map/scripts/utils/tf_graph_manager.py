@@ -4,6 +4,8 @@ from tf2_msgs.msg import TFMessage
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from utils.astar import topo_map_path
+import tf
+import copy
 
 def change_frame(point_1, T_1_2):
     #根据转换关系把在1坐标系下point转换到1坐标系下
@@ -31,7 +33,7 @@ def change_frame(point_1, T_1_2):
     return result[0:input_length]
     
 class multi_robot_tf_manager():
-    def __init__(self, robot_num):
+    def __init__(self, robot_num, sub_tf_flag = True, use_GT= False):
         #假设需要管理一系列类似的tf
         #如: robot1/map, robot2/map, ..., robotn/map
         #不同map之间的坐标变换可能在某一时刻发布，总体的tf构成一张图
@@ -43,13 +45,20 @@ class multi_robot_tf_manager():
         self.mat_A_ReEst = np.zeros((robot_num,robot_num)) #邻接矩阵
         self.mat_Delta_ReEst = np.zeros((robot_num,robot_num)) #度矩阵
 
+        self.use_GT_flag = use_GT
+        self.tf_listener = tf.TransformListener()
+        self.sub_grapg_vector = None
+        self.gen_new_RP = True #是否增加了一个新的RP
+        self.update_RP = True #是否更新了一个新的RP
+
         #记录已经读取到的相对位姿估计
         self.relative_pose_list = []
         for i in range(robot_num):
             tmp = [None for j in range(robot_num)]
             self.relative_pose_list.append(tmp)
-
-        rospy.Subscriber("/tf", TFMessage, self.catch_tf_callback, queue_size=1000, buff_size=52428800)
+        self.constructed_RP_list = []
+        if sub_tf_flag:
+            rospy.Subscriber("/tf", TFMessage, self.catch_tf_callback, queue_size=1000, buff_size=52428800)
     
     def catch_tf_callback(self,tf_msg):
         #通过tf这个topic获取相对位姿变换
@@ -80,30 +89,49 @@ class multi_robot_tf_manager():
 
     def add_tf_trans(self,robot1_index,robot2_index,rela_pose):
         #rela_pose: [x,y,yaw]
+        if self.use_GT_flag:
+            tmptimenow = rospy.Time.now()
+            self.tf_listener.waitForTransform(f"/robot{robot1_index+1}"+"/map", f"/robot{robot2_index+1}"+"/map", tmptimenow, rospy.Duration(0.5))
+            self.tf_transform, self.rotation = self.tf_listener.lookupTransform(f"/robot{robot1_index+1}"+"/map", f"/robot{robot2_index+1}"+"/map", tmptimenow)
+            rela_pose = [0,0,0]
+            rela_pose[0] = self.tf_transform[0]
+            rela_pose[1] = self.tf_transform[1]
+            rela_pose[2] = R.from_quat(self.rotation).as_euler('xyz', degrees=False)[2]
+        
+        if self.relative_pose_list[robot1_index][robot2_index]==None:
+            self.gen_new_RP = True
+        self.update_RP = True
         self.relative_pose_list[robot1_index][robot2_index] = rela_pose
         verse_relative_pose = change_frame([0,0,0], rela_pose)
         self.relative_pose_list[robot2_index][robot1_index] = verse_relative_pose
+        
 
 
     def obtain_sub_connected_graph(self):
         #获取所有图上的连通子图
 
         #update A
-        for i in range(self.robot_num):
-            for j in range(self.robot_num):
-                now_est = self.relative_pose_list[i][j]
-                if now_est == None:
-                    self.mat_A_ReEst[i,j] = 0
-                else:
-                    self.mat_A_ReEst[i,j] = 1
-        self.mat_Delta_ReEst = np.diag(np.sum(self.mat_A_ReEst,axis=0))
-        self.mat_lap_ReEst = self.mat_Delta_ReEst - self.mat_A_ReEst
-        # self.mat_lap_ReEst = self.mat_M_ReEst @ self.mat_M_ReEst.T #利用M矩阵求解，第二个定义
-        a_small_number = 1e-10
-        eigen_vale,eigen_vector = np.linalg.eig(self.mat_lap_ReEst)
-        zero_eigen_value = abs(eigen_vale)<a_small_number
-        sub_grapg_vector = np.abs(eigen_vector[:,zero_eigen_value])>a_small_number
-        return sub_grapg_vector.T #m*robot_number bool vector
+        if self.gen_new_RP:
+            for i in range(self.robot_num):
+                for j in range(self.robot_num):
+                    now_est = self.relative_pose_list[i][j]
+                    if now_est == None:
+                        self.mat_A_ReEst[i,j] = 0
+                    else:
+                        self.mat_A_ReEst[i,j] = 1
+            self.mat_Delta_ReEst = np.diag(np.sum(self.mat_A_ReEst,axis=0))
+            self.mat_lap_ReEst = self.mat_Delta_ReEst - self.mat_A_ReEst
+            # self.mat_lap_ReEst = self.mat_M_ReEst @ self.mat_M_ReEst.T #利用M矩阵求解，第二个定义
+            a_small_number = 1e-10
+            eigen_vale,eigen_vector = np.linalg.eig(self.mat_lap_ReEst)
+            zero_eigen_value = abs(eigen_vale)<a_small_number
+            sub_grapg_vector = np.abs(eigen_vector[:,zero_eigen_value])>a_small_number
+            self.sub_grapg_vector = sub_grapg_vector
+            self.gen_new_RP = False
+            return self.sub_grapg_vector.T #m*robot_number bool vector
+        else:
+            return self.sub_grapg_vector.T #m*robot_number bool vector
+        
 
     def A_mat_to_adj_list(self,A_mat):
         adj_list = dict()
@@ -121,23 +149,38 @@ class multi_robot_tf_manager():
         #想要获取T^1_2: robot1 -> robot2的坐标变换
         #robot index start from 0!
         #首先判断是否在一个连通分支上
-        subgraphs = self.obtain_sub_connected_graph()
-        connected_flag = False
-        for now_subgraph in subgraphs:
-            if now_subgraph[robot1_index] and now_subgraph[robot2_index]:
-                connected_flag = True
-                break
+        if (not self.update_RP) and self.constructed_RP_list[robot1_index][robot2_index] != None:
+            return self.constructed_RP_list[robot1_index][robot2_index]
+        else:
+            subgraphs = self.obtain_sub_connected_graph()
+            connected_flag = False
+            for now_subgraph in subgraphs:
+                if now_subgraph[robot1_index] and now_subgraph[robot2_index]:
+                    connected_flag = True
+                    break
+            
+            if not connected_flag:
+                print("not connected", subgraphs)
+                return None
+            adj_list = self.A_mat_to_adj_list(self.mat_A_ReEst)
+            topo_map = topo_map_path(adj_list,robot1_index, [robot2_index])
+            topo_map.get_path()
+            possible_path = topo_map.foundPath[0] #一条连接了两个所需要的相对位姿的路径
+            result = [0,0,0] #初始值为0 0 0 
+            for i in range(len(possible_path)-1):
+                now_trans = self.relative_pose_list[possible_path[i]][possible_path[i+1]]
+                result = change_frame(result,now_trans)
+            
+            
+            self.constructed_RP_list = copy.deepcopy(self.relative_pose_list)
+            self.constructed_RP_list[robot2_index][robot1_index] = result
+            self.constructed_RP_list[robot1_index][robot2_index] = change_frame([0,0,0],result)
+            self.update_RP = False
+            
+            return self.constructed_RP_list[robot1_index][robot2_index]
         
-        if not connected_flag:
-            print("not connected", subgraphs)
-            return None
-        adj_list = self.A_mat_to_adj_list(self.mat_A_ReEst)
-        topo_map = topo_map_path(adj_list,robot1_index, [robot2_index])
-        topo_map.get_path()
-        possible_path = topo_map.foundPath[0] #一条连接了两个所需要的相对位姿的路径
-        result = [0,0,0] #初始值为0 0 0 
-        for i in range(len(possible_path)-1):
-            now_trans = self.relative_pose_list[possible_path[i]][possible_path[i+1]]
-            result = change_frame(result,now_trans)
+
+
+            
         
-        return change_frame([0,0,0],result)
+         
