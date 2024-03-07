@@ -404,8 +404,8 @@ class RobotNode:
             print("----------Robot Exploration Finished!-----------")
             self.map.vertex[-1].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[-1].pose[0:2], self.map_origin, self.map_resolution)
             self.visulize_vertex()
-            process = subprocess.Popen("rosbag record --duration=5 -o /home/master/topomap.bag /robot1/topomap /robot1/map __name:=my_bag", shell=True, env=os.environ) #change to your file path
-            time.sleep(6)
+            process = subprocess.Popen("rosbag record --duration=10 -o /home/master/topomap.bag /robot1/topomap /robot1/map __name:=my_bag", shell=True, env=os.environ) #change to your file path
+            time.sleep(11)
             # 发送SIGINT信号给进程，让它结束记录
             process.send_signal(signal.SIGINT)
             process.wait()  # 等待进程结束

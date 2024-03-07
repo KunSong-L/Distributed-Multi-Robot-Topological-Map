@@ -116,6 +116,7 @@ class fht_map_creater:
         self.laser_scan_init = False
         self.local_laserscan = None
         self.local_laserscan_angle = None
+        self.pubfht_map_flag = False
 
         #publisher and subscriber
         self.marker_pub = rospy.Publisher(robot_name+"/visualization/marker", MarkerArray, queue_size=1)
@@ -298,6 +299,11 @@ class fht_map_creater:
         self.current_feature = [copy.deepcopy(self.local_laserscan_angle), copy.deepcopy(now_feature), copy.deepcopy(current_pose)]
 
         create_a_vertex_flag = self.create_a_vertex(panoramic_view,now_feature) # whether create a vertex
+        # 不发布拓扑地图，直接在外层类读取
+        if self.pubfht_map_flag:
+            topomap_message = TopomapToMessage(self.map)    
+            self.topomap_pub.publish(topomap_message) # publish topomap important!  
+            
         if create_a_vertex_flag: # create a vertex
             if create_a_vertex_flag == 1:#create a main vertex
                 omega_ch = np.array([1,2]) 
@@ -327,11 +333,7 @@ class fht_map_creater:
             #create edge
             self.create_edge()
            
-            self.visulize_vertex()
-
-            # 不发布拓扑地图，直接在外层类读取
-            # topomap_message = TopomapToMessage(self.map)    
-            # self.topomap_pub.publish(topomap_message) # publish topomap important!      
+            self.visulize_vertex()   
             
             if self.topo_refine == "no":
                 refine_flag_list = []

@@ -13,5 +13,10 @@
     <param name="platform" value="cuda" />
   </node>
   
+  <node name="experiment" pkg="multi_fht_map" type="exp_rend.py" output="screen">
+      <param name="num_robot" value="2"/>
+      <param name="sim_env" value="museum"/>
+      <param name="method" value="fht_map"/>
+  </node>
 
 </launch>

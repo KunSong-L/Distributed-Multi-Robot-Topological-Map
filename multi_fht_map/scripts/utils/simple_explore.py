@@ -50,9 +50,13 @@ class RobotNode:
         self.need_new_goal_pub = rospy.Publisher('/need_new_goal', Int32, queue_size=100) #是否需要一个新的前沿点
         self.last_goal_time = rospy.Time.now().to_sec()
         self.max_goal_duration = 10
+        self.start_follow_path_flag = False
+        self.path_point = None
         rospy.Subscriber(robot_name+"/map", OccupancyGrid, self.map_grid_callback, queue_size=1)
 
         rospy.Subscriber(robot_name+"/move_base/status", GoalStatusArray, self.move_base_status_callback, queue_size=1)
+        rospy.Subscriber(robot_name+"/move_base/status", GoalStatusArray, self.follow_path, queue_size=1)
+        
 
 
         self.actoinclient.wait_for_server()
@@ -315,3 +319,49 @@ class RobotNode:
                 # print("Target is an explored point! Change another goal!")
                 self.need_a_new_goal()
                 return
+
+    def follow_path(self,data):
+        if not self.start_follow_path_flag:
+            return
+
+        path_point = copy.deepcopy(self.path_point)
+        goal_reached = False
+        now_goal_index = 0
+        self.change_goal(path_point[now_goal_index], 0)
+        while(not goal_reached):
+            now_robot_pose = np.array(self.pose)[0:2]
+
+            #检测是否有以后的可去的点
+            find_new_target = False
+            for i in range(len(path_point)-1,now_goal_index,-1):#逆序索引
+
+                target_vertex_pose_pixel = (np.array(path_point[i])- np.array(self.map_origin))/self.map_resolution
+                x = int(target_vertex_pose_pixel[0])
+                y = int(target_vertex_pose_pixel[1])
+                height, width = self.global_map.shape
+                if x > 0 and x < width and y > 0 and y < height and self.global_map[y,x] == 0:
+                    now_target_vertex = i #如果目标可见，直接去目标点
+                    find_new_target = True
+                    break
+            if find_new_target:
+                now_goal_index=now_target_vertex
+                self.change_goal(path_point[now_goal_index], 0)
+                continue
+                
+            now_path_point = np.array(path_point[now_goal_index])[0:2]
+            
+            if now_goal_index == len(path_point)-1:
+                if np.linalg.norm(now_robot_pose - now_path_point) < 1:
+                    print(self.self_robot_name + "goal reached")
+                    break
+            else:
+                if np.linalg.norm(now_robot_pose - now_path_point) < 0.5:
+                    now_goal_index+=1
+                    self.change_goal(path_point[now_goal_index], 0)
+            
+            rospy.sleep(0.1)
+        self.start_follow_path_flag= False
+
+            
+
+

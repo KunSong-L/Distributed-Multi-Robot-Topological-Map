@@ -1,7 +1,7 @@
 #!/usr/bin/python3.8
 import math
 import rospy
-from std_msgs.msg import Int32
+from std_msgs.msg import Int32, Float32
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import   Point
 import numpy as np
@@ -52,6 +52,7 @@ class multi_rendezvous_manager():
         #储存结果，一个在i机器人坐标系下的pose1,一个在j机器人坐标系下的pose2
         self.estimated_vertex_pose = {(i,j): [] for i in range(robot_num) for j in range(robot_num)} #(i,j): mat 
         self.estimated_vertex_index = {(i,j): [] for i in range(robot_num) for j in range(robot_num)} #(i,j): mat 
+        self.transmitted_vertex_index = {(i,j): [] for i in range(robot_num) for j in range(robot_num)} #(i,j): mat 
 
         self.global_fht_map = None
         
@@ -65,7 +66,7 @@ class multi_rendezvous_manager():
         self.voronoi_graph_list = [None for i in range(self.robot_num)]
 
         #计算tf
-        self.tf_graph_manager = multi_robot_tf_manager(robot_num,sub_tf_flag=False,use_GT=True)
+        self.tf_graph_manager = multi_robot_tf_manager(robot_num,sub_tf_flag=False,use_GT=False)
 
         #是否执行交汇
         self.perform_rende_flag = False
@@ -74,14 +75,24 @@ class multi_rendezvous_manager():
 
         self.vis_color = np.array([[0xFF, 0x7F, 0x51], [0xD6, 0x28, 0x28],[0xFC, 0xBF, 0x49],[0x00, 0x30, 0x49],[0x1E, 0x90, 0xFF]])/255.0
         self.global_frontier_publisher = rospy.Publisher('/global_frontier_points', Marker, queue_size=1)
+        self.rend_time_pub = rospy.Publisher('/rend_time_pub', Float32, queue_size=1)
+        self.all_time_published = False
+        self.first_time_pub = False
+
         rospy.Subscriber('/need_new_goal', Int32, self.PIER_assign, queue_size=1) #NBV_assign, vrp_assign,PIER_assign
         # rospy.Subscriber("/robot1/panoramic", Image, self.fht_map_merger, queue_size=1)
         for i in range(self.robot_num):
             rospy.Subscriber(f"/robot{i+1}/panoramic", Image, self.single_fht_map_merger, queue_size=1)
         rospy.Subscriber("/robot1/panoramic", Image, self.multi_robot_rendezvous_callback, queue_size=1)
-       
+        
 
-    def multi_robot_rendezvous_callback(self,data):
+
+    def publish_now_time(self):
+        now_time_data = Float32()
+        now_time_data.data = rospy.Time.now().to_sec()
+        self.rend_time_pub.publish(now_time_data)
+
+    def multi_robot_rendezvous_callback_old(self,data):
         if not self.perform_rende_flag:
             return
 
@@ -223,6 +234,168 @@ class multi_rendezvous_manager():
 
         print("Perform Rendezvous")
 
+    def multi_robot_rendezvous_callback(self,data):
+        if not self.perform_rende_flag:
+            return
+
+        if self.published_a_ren_goal:
+            self.global_fht_map.visulize_vertex()
+            goal_reached_all_num = 0
+            for i in range(self.robot_num):
+                if self.RobotNode_list[i].start_follow_path_flag== False:
+                    goal_reached_all_num += 1
+            
+            if goal_reached_all_num == self.robot_num:
+                if not self.all_time_published:
+                    self.publish_now_time() #交汇完成时间
+                    rospy.sleep(0.1)
+                    total_transmmitted_vertex_num =0
+                    for i in range(robot_num):
+                        for j in range(robot_num):
+                            total_transmmitted_vertex_num+=len(self.transmitted_vertex_index[(i,j)])
+                    transmmited_scan_num = Float32()
+                    transmmited_scan_num.data = total_transmmitted_vertex_num
+                    self.rend_time_pub.publish(transmmited_scan_num)
+
+                    self.all_time_published=True
+                print("all Goal Reached")
+            return
+        
+        #停止每个机器人
+        self.published_a_ren_goal = True#进入这个函数之后机器人就不再运动了
+        self.publish_now_time() #获取全部相对位姿时间
+        for i in range(self.robot_num):
+            self.RobotNode_list[i].change_goal(np.array(self.RobotNode_list[i].pose[0:2]),0)
+            self.fhtmap_creater_list[i].pubfht_map_flag = True
+
+        robot_pose_list = []
+        robot_pose_frame_1_list = []
+        for i in range(self.robot_num):
+            robot_pose_list.append(self.RobotNode_list[i].pose[0:2]) #pose考虑旋转代价，如果不考虑输入前两个维度即可
+            robot_pose_frame_1_list.append(change_frame(self.RobotNode_list[i].pose[0:2],self.tf_graph_manager.get_relative_trans(i,0)))
+        
+        self.merge_topomap() #融合拓扑地图
+
+        #对所有节点计算最短路径
+        each_robot_all_vertex_dis = []
+
+        for i in range(self.robot_num):
+            now_robot_pose = robot_pose_frame_1_list[i]
+            now_paths = self.global_fht_map.from_start_point_to_every_vertex(now_robot_pose)
+            each_robot_all_vertex_dis.append(now_paths)
+        
+        each_robot_all_vertex_dis = np.array(each_robot_all_vertex_dis)
+
+
+        max_vertex_dis = np.max(each_robot_all_vertex_dis,axis=0)
+        #对上下界进行估计
+        max_freespace_dis = [] #矩形顶点距离中心的最大距离
+        for now_vertex in self.global_fht_map.map.vertex:
+            now_free_space = now_vertex.local_free_space_rect
+            x1,y1,x2,y2 = now_free_space
+
+            tmp = now_vertex.rotation.T @ np.array([x2-x1,y2-y1,0]) #矩形的x y方向长度
+            direction1 = now_vertex.rotation @ np.array([1,0,0])
+            direction2 = now_vertex.rotation @ np.array([0,1,0])
+
+            x3y3 = direction1 * tmp[0]
+            x3 = x3y3[0]
+            y3 = x3y3[1]
+            x4y4 = direction2 * tmp[0]
+            x4 = x4y4[0]
+            y4 = x4y4[1]
+
+            four_point = np.array([[x1,y1],[x2,y2],[x3,y3],[x4,y4]])
+
+            vertex_pose = np.array(now_vertex.pose[0:2])
+            four_dis = np.linalg.norm(four_point - vertex_pose,axis=1)
+            max_dis = np.max(four_dis)
+            max_freespace_dis.append(max_dis)
+        
+        max_freespace_dis = np.array(max_freespace_dis)
+        # print(f"vertex number {len(self.global_fht_map.map.vertex)}")
+        upper_bound = max_vertex_dis + max_freespace_dis
+        lower_bound = max_vertex_dis - max_freespace_dis
+
+        # min_upper_bound = np.min(upper_bound)
+        # potential_opt_point_index = lower_bound < min_upper_bound
+        potential_opt_point_index = lower_bound < np.min(max_vertex_dis)
+
+        #接下去对potential_opt_point_index中的所有点取最短路径
+        # print("max_vertex_dis",max_vertex_dis)
+        # print("max_freespace_dis",max_freespace_dis)
+        # print("potential_opt_point_index: ", potential_opt_point_index)
+        #对潜在的所有local free space遍历求解最短路径
+        delta = 1.5 #local free space插值的密度
+        total_rend_point = []
+        total_rend_dis = []
+        for i in range(len(self.global_fht_map.map.vertex)):
+            if not potential_opt_point_index[i]:
+                continue
+
+            now_vertex = self.global_fht_map.map.vertex[i]
+            now_free_space = now_vertex.local_free_space_rect
+            x1,y1,x2,y2 = now_free_space
+
+            #插值
+            tmp = now_vertex.rotation.T @ np.array([x2-x1,y2-y1,0]) #矩形的x y方向长度
+            freespace_wh = tmp[0:2].reshape(2) #width, height
+
+            x_grid, y_grid = np.meshgrid(np.arange(0, freespace_wh[0], delta), np.arange(0, freespace_wh[1], delta))
+            points = np.vstack((x_grid.flatten(), y_grid.flatten()))
+
+            real_points = now_vertex.rotation[0:2,0:2] @ points + np.array([[x1],[y1]]) #旋转回来, 2*n
+            real_points = real_points.T
+
+            #对于任意个点，计算最长路径
+            if len(real_points) == 0:
+                continue
+            point_dis = []
+            for now_point in real_points:
+                #计算adj node
+                adj_node_index = self.global_fht_map.dual_vertex_of_a_point(now_point)
+
+                #对于每个机器人计算最短路径
+                robot_dis = []
+                for robot_index in range(self.robot_num):
+                    #最短距离就是到拓扑节点距离加上节点到这个点距离
+                    node_dis = []
+                    for now_node_index in adj_node_index:
+                        node_pose = np.array(self.global_fht_map.map.vertex[now_node_index].pose[0:2])
+                        to_node_dis = each_robot_all_vertex_dis[robot_index][now_node_index]
+                        total_dis = to_node_dis + np.linalg.norm(node_pose - now_point)
+                        node_dis.append(total_dis)
+
+                    min_dis = np.min(node_dis)
+                    robot_dis.append(min_dis)
+                point_dis.append(np.max(robot_dis))
+            #找到最短的点
+            min_index = np.argmin(point_dis)
+            total_rend_point.append(real_points[min_index])
+            total_rend_dis.append(point_dis[min_index])
+        
+        #找到全局最小的
+        # global_min_index = np.argmin(total_rend_dis)
+        # target_in_robot1_frame = total_rend_point[global_min_index]
+
+        global_min_index = np.argmin(total_rend_dis)
+        min_index = np.argmin(max_vertex_dis)
+        if total_rend_dis[global_min_index] < np.min(max_vertex_dis):
+            target_in_robot1_frame = total_rend_point[global_min_index]
+        else:
+            target_in_robot1_frame = np.array(self.global_fht_map.map.vertex[min_index].pose[0:2])
+
+        #规划一条从每个机器人到交汇点的最短路径
+        for i in range(self.robot_num):
+            path_length, path_point_frame1 = self.global_fht_map.topo_path_planning(robot_pose_frame_1_list[i],target_in_robot1_frame,False)
+            rela_pose = self.tf_graph_manager.get_relative_trans(0,i)
+            path_point = change_frame_multi(path_point_frame1, rela_pose)
+            self.RobotNode_list[i].path_point = path_point
+            self.RobotNode_list[i].start_follow_path_flag = True
+
+        print("Perform Rendezvous")  
+        self.publish_now_time() #开始交汇时间    
+
 
     def merge_topomap(self):
         #融合所有的拓扑地图
@@ -312,6 +485,9 @@ class multi_rendezvous_manager():
         self.global_fht_map.visulize_vertex() #可视化
 
     def PIER_assign(self,data):
+        if not self.first_time_pub:
+            self.publish_now_time() #开始运动
+            self.first_time_pub = True
         start_time = time.time()
         if self.published_a_ren_goal:
             return
@@ -382,7 +558,7 @@ class multi_rendezvous_manager():
             target_frame_frontier = change_frame_multi(tmp_frontier.reshape((-1,2)),frame_trans).reshape((-1,2))
             total_frontier = np.vstack((total_frontier, target_frame_frontier))
         end_time = time.time()
-        print("time for collecting frontier", end_time-start_time)
+        # print("time for collecting frontier", end_time-start_time)
         #2. 判断fontier是否被探索
         frontier_number = len(total_frontier)
         not_expored_index = [True for i in range(frontier_number)]
@@ -397,10 +573,10 @@ class multi_rendezvous_manager():
                     not_expored_index[frontier_index] = False
         
         end_time = time.time()
-        print("time for detect is frontier explored", end_time-start_time)
+        # print("time for detect is frontier explored", end_time-start_time)
         real_total_frontier = total_frontier[not_expored_index,:]
         if len(real_total_frontier) == 0:
-            print("no frontier in this group")
+            # print("no frontier in this group")
             return
 
         #3. 进行分配
@@ -425,7 +601,7 @@ class multi_rendezvous_manager():
         choose_frontier = copy.deepcopy(in_partition_fontier[min_index])
         self.RobotNode_list[robot_index].change_goal(choose_frontier,0)
         end_time = time.time()
-        print("time for PIER Assign", end_time-start_time)
+        # print("time for PIER Assign", end_time-start_time)
 
     def frontier_ulitity_function(self,robot_pose,frontier_poses):
         dis_frontier_poses = np.sqrt(np.sum(np.square(frontier_poses - robot_pose[0:2]), axis=1))
@@ -663,6 +839,8 @@ class multi_rendezvous_manager():
                 now_similarity = np.dot(now_descriptor, now_vertex_2.descriptor)
                 #对于相似性超过阈值的直接进行相对位姿变换估计
                 if now_similarity > self.similarity_th:
+                    if now_vertex_2.id not in self.transmitted_vertex_index[(robot1_index,robot2_index)]:
+                        self.transmitted_vertex_index[(robot1_index,robot2_index)].append(now_vertex_2.id)
                     if now_vertex_2.id not in self.estimated_vertex_index[(robot1_index,robot2_index)]:
                         print("begin RP estimation")
                         estimated_RP = self.single_RP_estimation(robot1_index,robot2_index,virtual_vertex,now_vertex_2)

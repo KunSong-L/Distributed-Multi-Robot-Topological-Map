@@ -86,6 +86,7 @@ class TopologicalMap:
         # self.total_main_vertex = list()
         self.edge = list()
         self.threshold = threshold
+        self.offset_angle = 0
         self.vertex_id = -1
         self.edge_id = 0
         self.map_resolution = float(rospy.get_param('map_resolution', 0.05))

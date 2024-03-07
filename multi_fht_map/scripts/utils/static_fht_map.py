@@ -26,6 +26,7 @@ class static_fht_map:
         self.edge_to_adj_list()
         self.self_robot_name = "robot1" #全局地图
         self.robot_index = 0
+        self.max_v = 0.5
 
 
         #publisher and subscriber
@@ -219,7 +220,7 @@ class static_fht_map:
             roted_x = roted_point[0,0]
             roted_y = roted_point[1,0]
 
-            if rotated_xy[0,0] < roted_x and start_x < roted_x and rotated_xy[1,0] < roted_y and roted_y < rotated_xy[1,1]:
+            if rotated_xy[0,0] <= roted_x and rotated_xy[0,1] >= roted_x and rotated_xy[1,0] <= roted_y and rotated_xy[1,1] >= roted_y:
                 start_in_vertex_index.append(i)
         
         if len(start_in_vertex_index) == 0:
