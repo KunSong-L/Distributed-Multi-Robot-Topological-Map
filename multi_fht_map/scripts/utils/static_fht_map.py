@@ -27,6 +27,7 @@ class static_fht_map:
         self.self_robot_name = "robot1" #全局地图
         self.robot_index = 0
         self.max_v = 0.5
+        self.max_w = 0.2
 
 
         #publisher and subscriber

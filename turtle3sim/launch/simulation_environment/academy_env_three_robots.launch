@@ -14,17 +14,17 @@
     <arg name="debug" value="false"/>
   </include>
 
-    <arg name="robot_1_x" value="7"/>
+    <arg name="robot_1_x" value="-6"/>
     <arg name="robot_1_y" value="-5"/>
     <arg name="robot_1_yaw" value="1.57"/>
 
-    <arg name="robot_2_x" value="-7"/>
-    <arg name="robot_2_y" value="5"/>
-    <arg name="robot_2_yaw" value="1.57"/>
+    <arg name="robot_2_x" value="2"/>
+    <arg name="robot_2_y" value="8"/>
+    <arg name="robot_2_yaw" value="0"/>
 
-    <arg name="robot_3_x" value="-7"/>
-    <arg name="robot_3_y" value="-5"/>
-    <arg name="robot_3_yaw" value="1.57"/>
+    <arg name="robot_3_x" value="5"/>
+    <arg name="robot_3_y" value="-10"/>
+    <arg name="robot_3_yaw" value="0"/>
 
     <group ns="robot1">
         <include file="$(find turtlebot3sim)/launch/includes/robot.launch.xml">

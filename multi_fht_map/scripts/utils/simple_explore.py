@@ -186,7 +186,10 @@ class RobotNode:
             current_frontier =  detected_frontiers_origin* self.map_resolution + np.array(self.map_origin)
 
             self.total_frontier = np.vstack((self.total_frontier, current_frontier))
-            ds_size = 0.5
+            if self.use_clustered_frontier:
+                ds_size = 0.2
+            else:
+                ds_size = 0.5
             self.total_frontier = sparse_point_cloud(self.total_frontier, ds_size)
         except:
             print("error in detect frontier")
@@ -201,7 +204,7 @@ class RobotNode:
                 self.need_a_new_goal()
 
         if self.use_clustered_frontier:
-            self.clustered_frontier = self.frontier_cluster(self.total_frontier,0.4).reshape((-1,2))
+            self.clustered_frontier = self.frontier_cluster(self.total_frontier,0.5,3).reshape((-1,2))
         else:
             self.clustered_frontier = self.total_frontier
 
@@ -251,7 +254,11 @@ class RobotNode:
             for now_area_pos in self.dead_area:
                 if np.linalg.norm(now_area_pos - pose_in_world) < 2: #对于以前不可达的frontier直接删掉
                     return True
-
+            expored_range = 6
+            temp_map = self.global_map[frontier_position[1]-expored_range:frontier_position[1]+expored_range, frontier_position[0]-expored_range:frontier_position[0]+expored_range]
+            if np.any(temp_map == 100):# delete near obstcal frontier
+                return True
+                
             if np.all(temp_map == 0): #Only explored area in this region
                 return True
             else:
@@ -339,10 +346,13 @@ class RobotNode:
                 x = int(target_vertex_pose_pixel[0])
                 y = int(target_vertex_pose_pixel[1])
                 height, width = self.global_map.shape
-                if x > 0 and x < width and y > 0 and y < height and self.global_map[y,x] == 0:
-                    now_target_vertex = i #如果目标可见，直接去目标点
-                    find_new_target = True
-                    break
+                if x > 0 and x < width and y > 0 and y < height and self.global_map[y,x] == 0: #如果目标可见
+                    #目标点不要过远
+                    if np.linalg.norm(np.array(path_point[i]) - now_robot_pose) < 7:
+                        now_target_vertex = i 
+                        find_new_target = True
+                        break
+
             if find_new_target:
                 now_goal_index=now_target_vertex
                 self.change_goal(path_point[now_goal_index], 0)
@@ -351,7 +361,7 @@ class RobotNode:
             now_path_point = np.array(path_point[now_goal_index])[0:2]
             
             if now_goal_index == len(path_point)-1:
-                if np.linalg.norm(now_robot_pose - now_path_point) < 1:
+                if np.linalg.norm(now_robot_pose - now_path_point) < 2:
                     print(self.self_robot_name + "goal reached")
                     break
             else:

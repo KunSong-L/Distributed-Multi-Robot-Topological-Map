@@ -26,3 +26,18 @@
     <arg name="robot_3_y" value="17"/>
     <arg name="robot_3_yaw" value="1.57"/>
 ```
+
+# Acade
+```
+    <arg name="robot_1_x" value="7"/>
+    <arg name="robot_1_y" value="-5"/>
+    <arg name="robot_1_yaw" value="1.57"/>
+
+    <arg name="robot_2_x" value="-7"/>
+    <arg name="robot_2_y" value="5"/>
+    <arg name="robot_2_yaw" value="1.57"/>
+
+    <arg name="robot_3_x" value="-7"/>
+    <arg name="robot_3_y" value="-5"/>
+    <arg name="robot_3_yaw" value="1.57"/>
+```

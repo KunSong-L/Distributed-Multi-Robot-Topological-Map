@@ -16,9 +16,11 @@
   
   <node name="experiment" pkg="multi_fht_map" type="exp_rend.py" output="screen">
       <param name="num_robot" value="3"/>
-      <param name="sim_env" value="museum"/>
-      <!-- <param name="sim_env" value="large_indoor"/> -->
-      <param name="method" value="fht_map"/>
+      <!-- <param name="sim_env" value="museum"/> -->
+      <param name="sim_env" value="large_indoor"/>
+      <!-- <param name="method" value="fht_map"/> -->
+      <!-- <param name="method" value="mNBV"/> -->
+      <param name="method" value="vrp"/>
   </node>
 
 

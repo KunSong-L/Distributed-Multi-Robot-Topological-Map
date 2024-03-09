@@ -261,14 +261,11 @@ def find_local_max_rect(image, seed_point, map_origin, map_reso):
 def calculate_vertex_info(frontiers, cluser_eps=1, cluster_min_samples=7):
     # input: frontier; DBSCAN eps; DBSCAN min samples
     # output: how many vertex in this cluster
-    print("start dbscan")
     dbscan = DBSCAN(eps=cluser_eps, min_samples=cluster_min_samples)
     labels = dbscan.fit_predict(frontiers)
-    print(labels)
     label_counts = Counter(labels)
     label_counts[-1] = 0
     vertex_infor = [label_counts[now_label] for now_label in labels]
-    print("calculated infor",vertex_infor)
     return vertex_infor
 
 def calculate_infor(image):
