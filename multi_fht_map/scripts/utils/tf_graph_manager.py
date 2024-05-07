@@ -102,6 +102,7 @@ class multi_robot_tf_manager():
             self.gen_new_RP = True
         self.update_RP = True
         self.relative_pose_list[robot1_index][robot2_index] = rela_pose
+        print(rela_pose)
         verse_relative_pose = change_frame([0,0,0], rela_pose)
         self.relative_pose_list[robot2_index][robot1_index] = verse_relative_pose
         

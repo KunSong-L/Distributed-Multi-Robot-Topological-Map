@@ -1,0 +1,13 @@
+<launch>
+
+  <arg name="model" default="burger"/>
+  <node name="rviz1" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot1explore.rviz" />
+
+  <node name="robot_explore" pkg="multi_fht_map" type="multi_rendezvous_exp.py" output="screen">
+    <param name="robot_num" value="1"/>
+    <param name="network" value="retrievalSfM120k-vgg16-gem" />
+    <param name="platform" value="cuda" />
+  </node>
+  
+
+</launch>

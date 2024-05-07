@@ -10,9 +10,7 @@ from robot_function import change_frame,change_frame_multi, voronoi_region, four
 from utils.solveVRP import VRP_solver
 from utils.tf_graph_manager import multi_robot_tf_manager
 from utils.simple_explore import RobotNode
-from robot_fht_map_creater import fht_map_creater
-# from robot_fht_map_creater_NS import fht_map_creater #ablation study for node selection
-
+from robot_fht_map_creater_exp import fht_map_creater
 import copy
 from TopoMap import Support_Vertex, Vertex
 import open3d as o3d
@@ -36,7 +34,7 @@ class multi_rendezvous_manager():
             robot_list_name.append("robot"+str(rr+1))
         
         #minimal class for robot exploration
-        self.RobotNode_list = [RobotNode(now_robot,use_clustered_frontier=False) for now_robot in robot_list_name]
+        # self.RobotNode_list = [RobotNode(now_robot,use_clustered_frontier=False) for now_robot in robot_list_name]
         
         #create fht map creater
         #color: frontier, main_vertex, support vertex, edge, local free space
@@ -45,13 +43,13 @@ class multi_rendezvous_manager():
         robot3_color = np.array([[0x8A, 0x2B, 0xE2], [0x8B, 0x00, 0x00], [0xFF, 0xF8, 0xDC], [0x7B, 0x68, 0xEE], [0xFF, 0x45, 0x00],[0x78, 0xC2, 0xC4]]) / 255.0
         robot4_color = np.array([[0x8A, 0x2B, 0xE2], [0xCD, 0x00, 0x00], [0xFF, 0xDA, 0xB9], [0x00, 0x00, 0x80], [0xFF, 0x45, 0x00],[0x9c, 0x9c, 0x9c]]) / 255.0
         self.global_color = [robot1_color,robot2_color,robot3_color,robot4_color]
-        self.fhtmap_creater_list = [fht_map_creater(now_robot,4, topo_refine="no") for now_robot in robot_list_name]
+        self.fhtmap_creater_list = [fht_map_creater(now_robot,1, topo_refine="no") for now_robot in robot_list_name]
         for now_robot in range(self.robot_num):
             self.fhtmap_creater_list[now_robot].vis_color = self.global_color[now_robot]
         
         #拓扑地图融合
         self.similarity_mat_dict = {(i,j): [] for i in range(robot_num) for j in range(i,robot_num)} #(i,j): mat 
-        self.similarity_th = 0.96
+        self.similarity_th = 0.95
 
         if self.robot_num == 2:
             self.adj_mat_topomap = np.array([[0,1],[1,0]])
@@ -69,16 +67,15 @@ class multi_rendezvous_manager():
         self.global_fht_map = None
         
         #交汇地点选取
-        self.mergered_topological_map = TopologicalMap(robot_name="robot1", threshold=0.97)
+        self.mergered_topological_map = TopologicalMap(robot_name="robot1", threshold=0.96)
 
         #机器人运动控制
-        self.vrp_solver = VRP_solver(None,None)
         self.reassign_voronoi = True
         self.last_connnected_graph_num = self.robot_num
         self.voronoi_graph_list = [None for i in range(self.robot_num)]
 
         #计算tf
-        self.use_GT = True
+        self.use_GT = False
         self.tf_graph_manager = multi_robot_tf_manager(robot_num,sub_tf_flag=False,use_GT=self.use_GT)
 
         #是否执行交汇
@@ -91,27 +88,22 @@ class multi_rendezvous_manager():
         self.rend_time_pub = rospy.Publisher('/rend_time_pub', Float32, queue_size=1)
         self.all_time_published = False
         self.first_time_pub = False
-        self.start_time = -1
 
-        rospy.Subscriber('/need_new_goal', Int32, self.PIER_assign, queue_size=1) #PIER_assign, NBV_assign, vrp_assign
-        # rospy.Subscriber("/robot1/panoramic", Image, self.fht_map_merger, queue_size=1)
-        for i in range(self.robot_num):
-            rospy.Subscriber(f"/robot{i+1}/panoramic", Image, self.single_fht_map_merger, queue_size=1)
-        rospy.Subscriber("/robot1/panoramic", Image, self.multi_robot_rendezvous_callback, queue_size=1)
+        # rospy.Subscriber('/need_new_goal', Int32, self.PIER_assign, queue_size=1) #PIER_assign, NBV_assign, vrp_assign
+        # # rospy.Subscriber("/robot1/panoramic", Image, self.fht_map_merger, queue_size=1)
+        # for i in range(self.robot_num):
+        #     rospy.Subscriber(f"/robot{i+1}/color/image_raw", Image, self.single_fht_map_merger, queue_size=1)
+        # rospy.Subscriber("/robot1/color/image_raw", Image, self.multi_robot_rendezvous_callback, queue_size=1)
         
-
-
     def publish_now_time(self):
-
         now_time_data = Float32()
         now_time_data.data = rospy.Time.now().to_sec()
-
-        if self.start_time == -1:
-            self.start_time = now_time_data.data
-        now_time_data.data -= self.start_time
         self.rend_time_pub.publish(now_time_data)
 
     def multi_robot_rendezvous_callback(self,data):
+        if self.robot_num == 1:
+            return
+
         if not self.perform_rende_flag:
             return
 
@@ -132,7 +124,7 @@ class multi_rendezvous_manager():
                             total_transmmitted_vertex_num+=len(self.transmitted_vertex_index[(i,j)])
                     transmmited_scan_num = Float32()
                     transmmited_scan_num.data = total_transmmitted_vertex_num
-                    self.rend_time_pub.publish(transmmited_scan_num) #传输交换了多少激光雷达数据
+                    self.rend_time_pub.publish(transmmited_scan_num)
 
                     self.all_time_published=True
                 print("all Goal Reached")
@@ -371,7 +363,7 @@ class multi_rendezvous_manager():
         #对每个集群内部进行分区探索
         #首先获取子图
         sub_graphs = self.tf_graph_manager.obtain_sub_connected_graph()
-        if len(sub_graphs) == 1:
+        if len(sub_graphs) == 1 and self.robot_num != 1:
             self.perform_rende_flag = True
         robot_index = data.data
         robot_sub_graph = None
@@ -453,7 +445,7 @@ class multi_rendezvous_manager():
         # print("time for detect is frontier explored", end_time-start_time)
         real_total_frontier = total_frontier[not_expored_index,:]
         if len(real_total_frontier) == 0:
-            # print("no frontier in this group")
+            print("no frontier in this group")
             return
 
         #3. 进行分配
@@ -469,6 +461,7 @@ class multi_rendezvous_manager():
 
         if len(in_partition_fontier) == 0:
             self.no_frontier_assign(robot_index, real_frontier_RF, sub_graph_robot_index)
+            # print("no frontier")
             return
         
         #Local NBV Assign
@@ -477,6 +470,7 @@ class multi_rendezvous_manager():
         min_index = np.argmin(frontier_scores)
         choose_frontier = copy.deepcopy(in_partition_fontier[min_index])
         if not self.perform_rende_flag:
+            print(choose_frontier)
             self.RobotNode_list[robot_index].change_goal(choose_frontier,0)
         end_time = time.time()
         # print("time for PIER Assign", end_time-start_time)
@@ -519,160 +513,6 @@ class multi_rendezvous_manager():
         self.RobotNode_list[robot_index].change_goal(choose_frontier,0)
        
 
-    def NBV_assign(self,data):
-        if self.published_a_ren_goal:
-            return
-        #对每个集群内部进行VRP分配前沿点
-        #首先获取子图
-        if not self.first_time_pub:
-            self.publish_now_time() #开始运动
-            self.first_time_pub = True
-        sub_graphs = self.tf_graph_manager.obtain_sub_connected_graph()
-        if len(sub_graphs) == 1:
-            self.perform_rende_flag = True
-        robot_index = data.data
-        #判断当前机器人在哪个子图下
-        for now_sub_graph in sub_graphs:
-            if now_sub_graph[robot_index] == True:
-                break
-        
-        total_fontier = copy.deepcopy(self.RobotNode_list[robot_index].total_frontier)
-        robot_pose = copy.deepcopy(self.RobotNode_list[robot_index].pose)
-
-        frontier_poses = total_fontier
-        dis_frontier_poses = np.sqrt(np.sum(np.square(frontier_poses - robot_pose[0:2]), axis=1))
-        dis_cost = np.abs(dis_frontier_poses - 2)
-
-        angle_frontier_poses = np.arctan2(frontier_poses[:, 1] - robot_pose[1], frontier_poses[:, 0] - robot_pose[0]) - robot_pose[2] / 180 * np.pi
-        angle_frontier_poses = np.arctan2(np.sin(angle_frontier_poses), np.cos(angle_frontier_poses)) # turn to -pi~pi
-        angle_cost = np.abs(angle_frontier_poses)
-        
-        # calculate frontier information
-        vertex_info = np.array(calculate_vertex_info(frontier_poses))
-        dis_epos = 1
-        angle_epos = 2
-        frontier_scores = (1 + np.exp(-vertex_info))*(dis_epos * dis_cost + angle_epos * angle_cost)
-        max_index = np.argmin(frontier_scores)
-
-        choose_frontier = copy.deepcopy(frontier_poses[max_index])
-        try:#可能这个前沿点已经在其他地方被删除过了
-            np.delete(self.RobotNode_list[robot_index].total_frontier, max_index, axis=0)
-        except:
-            pass
-        
-        #修改前沿点
-        self.RobotNode_list[robot_index].change_goal(choose_frontier,0)
-        
-    def vrp_assign(self,data):
-        if self.published_a_ren_goal:
-            return
-        if not self.first_time_pub:
-            self.publish_now_time() #开始运动
-            self.first_time_pub = True
-        #对每个集群内部进行VRP分配前沿点
-        #首先获取子图
-        sub_graphs = self.tf_graph_manager.obtain_sub_connected_graph()
-        if len(sub_graphs) == 1:
-            self.perform_rende_flag = True
-        robot_index = data.data
-        #判断当前机器人在哪个子图下
-        for now_sub_graph in sub_graphs:
-            if now_sub_graph[robot_index] == True:
-                break
-        #将前沿点全部统一到子图内部某个坐标系下
-        start = time.time()
-        target_frame = -1
-        total_frontier = np.array([]).reshape((-1,2))
-        robot_pose = np.array([]).reshape((-1,3))#机器人是带朝向的
-        for index in range(self.robot_num):
-            if now_sub_graph[index] != 1:
-                continue
-            if target_frame == -1:
-                target_frame = index
-            now_robot_frontier = copy.deepcopy(self.RobotNode_list[index].clustered_frontier)
-            #统一坐标系到target_frame
-            frame_trans = self.tf_graph_manager.get_relative_trans(index,target_frame)
-            target_frame_frontier = change_frame_multi(now_robot_frontier,frame_trans).reshape((-1,2))
-            total_frontier = np.vstack((total_frontier, target_frame_frontier))
-
-            #把机器人的位置也改变一下坐标系
-            now_robot_pose = self.RobotNode_list[index].pose
-            target_frame_pose = change_frame(now_robot_pose,frame_trans) 
-            robot_pose = np.vstack((robot_pose, target_frame_pose))
-        if len(total_frontier)==0:
-            print("Exploration Finished!")
-            return
-        #需要判断前沿点是否被其他机器人探索过
-        not_expored_index = [True for i in range(len(total_frontier))]
-        for index in range(self.robot_num):
-            if now_sub_graph[index] != 1:
-                continue
-            #把前沿点都转换到index frame下
-            frame_trans = self.tf_graph_manager.get_relative_trans(target_frame,index)
-            robot_frame_frontier = change_frame_multi(total_frontier,frame_trans)
-            #判断改前沿点是否还是一个前沿
-            
-            for frontier_index, now_frontier in enumerate(robot_frame_frontier):
-                explored_frontier_flag  = self.RobotNode_list[index].is_explored_frontier(now_frontier)
-                if explored_frontier_flag:
-                    not_expored_index[frontier_index] = False
-        #筛选前沿点
-        real_total_frontier = total_frontier[not_expored_index,:]
-        if len(real_total_frontier) == 0:
-            print("Find no frontier")
-            return
-        
-        #求解VRP问题
-        # self.vrp_solver.robot_pose = robot_pose[:,0:2] #只采用距离代价，先不考虑旋转
-        # self.vrp_solver.points = real_total_frontier #仅分配还没探索过的
-        # result_path,path_length = self.vrp_solver.solveVRP()
-        #看起来存在一点问题，不一定实在robot index = 0的机器人上进行拓扑路径规划
-        C_robot_to_frontier, C_frontier_to_frontier = self.create_costmat(robot_pose, real_total_frontier, 0) #利用拓扑图上的距离求解VRP问题
-        result_path,path_length = self.vrp_solver.solveVRP(C_robot_to_frontier, C_frontier_to_frontier)
-        #可视化前沿点
-        self.visulize_frontier("robot"+str(target_frame+1),total_frontier[not_expored_index,:])
-        end =  time.time()
-        print(f" time for assign robot {robot_index+1}, {end - start}")
-        #分配任务
-        group_robot_index = -1
-        for now_robot_index in range(self.robot_num):
-            if now_sub_graph[now_robot_index]: #计算当前下标为now_robot_index的机器人是当前集群中的第几个机器人
-                group_robot_index+=1
-            else:
-                continue
-            
-            if now_robot_index == robot_index: #当前机器人为需要发布前沿点的机器人
-                robot_path = result_path[group_robot_index+1]
-                if len(robot_path)==0:
-                    continue
-                target_frontier = real_total_frontier[robot_path[0] - 1] #target_frame下
-                #修改前沿点坐标系并发送前沿点
-                robot_frame_frontier = change_frame(target_frontier,self.tf_graph_manager.get_relative_trans(target_frame,now_robot_index))
-                self.RobotNode_list[now_robot_index].change_goal(np.array(robot_frame_frontier),0)
-
-    
-    def create_costmat(self,robot_pose,frontier_pose,robot_index):
-        n_robot = len(robot_pose)
-        n_point = len(frontier_pose)
-        C_robot_to_frontier = np.zeros((n_robot,n_point))
-        C_frontier_to_frontier = np.zeros((n_point,n_point))
-        for i in range(n_robot):
-            for j in range(n_point):
-                C_robot_to_frontier[i,j],path_point = self.fhtmap_creater_list[robot_index].topo_path_planning(robot_pose[i],frontier_pose[j])
-
-        for i in range(n_point):
-            for j in range(n_point):
-                C_frontier_to_frontier[i,j],path_point = self.fhtmap_creater_list[robot_index].topo_path_planning(frontier_pose[i],frontier_pose[j])
-        
-        # #处理最近的前沿点
-        beta = 0 #对于最近的点施加一个很小的代价
-        for now_robot_to_frontier in C_robot_to_frontier:
-            min_index = np.argmin(now_robot_to_frontier)
-            now_robot_to_frontier[min_index] += beta
-
-        return C_robot_to_frontier, C_frontier_to_frontier
-
-
     def visulize_frontier(self,robot_name,frontiers):
         # ----------visualize clustered frontier------------
         frontier_marker = Marker()
@@ -699,10 +539,11 @@ class multi_rendezvous_manager():
         # --------------finish visualize frontier---------------
 
     def single_fht_map_merger(self,data):
+        if self.robot_num == 1:
+            return
         if self.published_a_ren_goal:
             return
         obtain_new_est = False
-
         robot1_index = int(data.header.frame_id[5])-1
         now_features = copy.deepcopy(self.fhtmap_creater_list[robot1_index].current_feature)
         if len(now_features) == 0:

@@ -7,7 +7,6 @@ import tf
 from std_msgs.msg import String
 from visualization_msgs.msg import Marker, MarkerArray
 from laser_geometry import LaserProjection
-import message_filters
 from self_topoexplore.msg import TopoMapMsg
 from TopoMap import Support_Vertex, Vertex, Edge, TopologicalMap
 from utils.imageretrieval.imageretrievalnet import init_network
@@ -73,14 +72,6 @@ class fht_map_creater:
         ])
         #finish init NN
 
-        # init image sub
-        image1_sub = message_filters.Subscriber(robot_name+"/camera1/image_raw", Image)
-        image2_sub = message_filters.Subscriber(robot_name+"/camera2/image_raw", Image)
-        image3_sub = message_filters.Subscriber(robot_name+"/camera3/image_raw", Image)
-        image4_sub = message_filters.Subscriber(robot_name+"/camera4/image_raw", Image)
-        ts = message_filters.TimeSynchronizer([image1_sub, image2_sub, image3_sub, image4_sub], 10) #传感器信息融合
-        ts.registerCallback(self.create_panoramic_callback) # 
-
         #color: frontier, main_vertex, support vertex, edge, local free space
         self.vis_color = np.array([[0xFF, 0x7F, 0x51], [0xD6, 0x28, 0x28],[0xFC, 0xBF, 0x49],[0x00, 0x30, 0x49],[0x1E, 0x90, 0xFF],[0x00, 0xFF, 0x00]])/255.0
         
@@ -123,11 +114,14 @@ class fht_map_creater:
         self.start_pub = rospy.Publisher("/start_exp", String, queue_size=1) #发一个start
         self.vertex_free_space_pub = rospy.Publisher(robot_name+'/vertex_free_space', MarkerArray, queue_size=1)
         self.find_better_path_pub = rospy.Publisher(robot_name+'/find_better_path', String, queue_size=100)
+        print("subscribe to " + robot_name+"/color/image_raw")
+        rospy.Subscriber(robot_name+"/color/image_raw", Image, self.reshape_img_callback, queue_size=1) #订阅图片reshape之后发布出来
         rospy.Subscriber(robot_name+"/panoramic", Image, self.map_panoramic_callback, queue_size=1)
         rospy.Subscriber(robot_name+"/scan", LaserScan, self.laserscan_callback, queue_size=1)
         rospy.Subscriber(robot_name+'/find_better_path', String, self.find_better_path_callback, queue_size=100)
         rospy.Subscriber(robot_name+"/map", OccupancyGrid, self.map_grid_callback, queue_size=1)
         print("Finish Init FHT-Map of ", robot_name)
+        print("begin real world experiment")
 
     def laserscan_callback(self, scan):
         ranges = np.array(scan.ranges)
@@ -163,20 +157,18 @@ class fht_map_creater:
 
         return output
 
-    def create_panoramic_callback(self, image1, image2, image3, image4):
-        #合成一张全景图片然后发布
-        img1 = self.cv_bridge.imgmsg_to_cv2(image1, desired_encoding="rgb8")
-        img2 = self.cv_bridge.imgmsg_to_cv2(image2, desired_encoding="rgb8")
-        img3 = self.cv_bridge.imgmsg_to_cv2(image3, desired_encoding="rgb8")
-        img4 = self.cv_bridge.imgmsg_to_cv2(image4, desired_encoding="rgb8")
-        panoram = [img1, img2, img3, img4]
-        self.panoramic_view = np.hstack(panoram)
-        if save_result:
-            cv2.imwrite(debug_path + "/2.png",self.panoramic_view)
-        image_message = self.cv_bridge.cv2_to_imgmsg(self.panoramic_view, encoding="rgb8")
+
+    def reshape_img_callback(self, image):
+        img = self.cv_bridge.imgmsg_to_cv2(image, desired_encoding="rgb8")
+        resized_img = cv2.resize(img, (2560,480))
+
+        image_message = self.cv_bridge.cv2_to_imgmsg(resized_img, encoding="rgb8")
         image_message.header.stamp = rospy.Time.now()  
         image_message.header.frame_id = self.self_robot_name+"/odom"
         self.panoramic_view_pub.publish(image_message)
+
+
+
 
 
     def visulize_vertex(self):
@@ -303,7 +295,7 @@ class fht_map_creater:
             
         if create_a_vertex_flag: # create a vertex
             if create_a_vertex_flag == 1:#create a main vertex
-                
+                omega_ch = np.array([1,2]) 
                 ch_list = [] #C for localization ability; H for heat value
                 for  now_vertex in self.potential_main_vertex:
                     C_now = now_vertex[1][0]
@@ -311,12 +303,9 @@ class fht_map_creater:
                     ch_list.append([C_now, H_now])
                 
                 total_ch = np.array(ch_list)
-                # omega_ch = np.array([1,2]) 
-                # z_star = np.max(total_ch,axis=0)
-                # total_ch_minus_z = total_ch - z_star
-                # weighted_ch = omega_ch * total_ch_minus_z
-                omega_ch = np.array([-1,2]) 
-                weighted_ch = omega_ch * total_ch
+                z_star = np.max(total_ch,axis=0)
+                total_ch_minus_z = total_ch - z_star
+                weighted_ch = omega_ch * total_ch_minus_z
                 infinite_norm_weighted_ch = np.max(weighted_ch,axis=1)
                 best_index = np.argmax(infinite_norm_weighted_ch)
                 vertex = copy.deepcopy(self.potential_main_vertex[best_index][0])
@@ -368,7 +357,7 @@ class fht_map_creater:
             return
         feature_simliar_th = 0.94
         main_vertex_dens = self.main_vertex_dens #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good; sigma_c in paper
-        global_vertex_dens = 2 # create a support vertex large than 2 meter
+        global_vertex_dens = 1 # create a support vertex large than 2 meter
         # check the heat map value of this point
         local_laserscan_angle = copy.deepcopy(self.local_laserscan_angle)
         heat_map_value = self.heat_value_eval()

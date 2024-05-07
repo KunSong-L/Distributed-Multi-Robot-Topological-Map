@@ -1,4 +1,4 @@
-from self_topoexplore.msg import BinaryArrayMsg, EdgeMsg, VertexMsg, TopoMapMsg, SupportVertexMsg
+from fht_map.msg import BinaryArrayMsg, EdgeMsg, VertexMsg, TopoMapMsg, SupportVertexMsg
 from TopoMap import Vertex, Edge, TopologicalMap, Support_Vertex
 import numpy as np
 import sys

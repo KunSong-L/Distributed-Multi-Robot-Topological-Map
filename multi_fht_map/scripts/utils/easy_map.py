@@ -1,4 +1,4 @@
-from astar import grid_path
+from utils.astar import grid_path
 import scipy.ndimage
 import numpy as np
 import matplotlib.pyplot as plt
@@ -65,6 +65,14 @@ class easy_grid_map:
         if vis_flag:
             calculate_grid_path.vis_path()
         return calculate_grid_path.foundPath
+
+    def calculate_path_between2points_r2(self,point1,point2,vis_flag = False):
+        distance_map = scipy.ndimage.distance_transform_edt(self.map == 0)
+        calculate_grid_path = grid_path(self.map, distance_map,point1, point2)
+        calculate_grid_path.get_path()
+        if vis_flag:
+            calculate_grid_path.vis_path()
+        return calculate_grid_path.foundPath, calculate_grid_path.path_length
 
     def random_points_on_map(self,num):
         #返回以row col给定的一系列点

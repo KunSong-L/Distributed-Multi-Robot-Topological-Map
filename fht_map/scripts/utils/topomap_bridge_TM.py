@@ -8,22 +8,16 @@ def TopomapToMessage(Topomap):
     #这里还需要修改一下，仅传输没有传输过的数据
     topomap_message = TopoMapMsg()
     for i in range(len(Topomap.vertex)):
-        if isinstance(Topomap.vertex[i], Vertex):
-            vertexmsg = VertexMsg()
-            vertexmsg.robot_name = Topomap.vertex[i].robot_name
-            vertexmsg.id = Topomap.vertex[i].id
-            vertexmsg.pose = Topomap.vertex[i].pose
-            vertexmsg.local_free_space_rect = Topomap.vertex[i].local_free_space_rect 
-            vertexmsg.descriptor = Topomap.vertex[i].descriptor.tolist()
-            vertexmsg.rot_descriptor = Topomap.vertex[i].local_laserscan_angle.tolist()
-            topomap_message.vertex.append(vertexmsg)
-        else:
-            vertexmsg = SupportVertexMsg()
-            vertexmsg.robot_name = Topomap.vertex[i].robot_name
-            vertexmsg.id = Topomap.vertex[i].id
-            vertexmsg.pose = Topomap.vertex[i].pose
-            vertexmsg.local_free_space_rect = Topomap.vertex[i].local_free_space_rect 
-            topomap_message.support_vertex.append(vertexmsg)
+        #只有main node
+        vertexmsg = VertexMsg()
+        vertexmsg.robot_name = Topomap.vertex[i].robot_name
+        vertexmsg.id = Topomap.vertex[i].id
+        vertexmsg.pose = [Topomap.vertex[i].pose.pose.position.x,Topomap.vertex[i].pose.pose.position.y,0]
+        vertexmsg.local_free_space_rect = [0,0,0,0]
+        vertexmsg.descriptor = Topomap.vertex[i].descriptor.tolist()
+        vertexmsg.rot_descriptor = [0 for i in range(360)]
+        topomap_message.vertex.append(vertexmsg)
+
 
     for i in range(len(Topomap.edge)):
         edgemsg = EdgeMsg()
@@ -54,11 +48,10 @@ def MessageToTopomap(topomap_message):
             vertex = Vertex()
             vertex.robot_name = topomap_message.vertex[vertex_index].robot_name
             vertex.id = topomap_message.vertex[vertex_index].id
-            vertex.pose = list(topomap_message.vertex[vertex_index].pose)
+            vertex.pose = topomap_message.vertex[vertex_index].pose
             vertex.local_free_space_rect = topomap_message.vertex[vertex_index].local_free_space_rect
             vertex.descriptor = np.asarray(topomap_message.vertex[vertex_index].descriptor)
             vertex.local_laserscan_angle = np.asarray(topomap_message.vertex[vertex_index].rot_descriptor)
-            vertex.descriptor_infor = calculate_entropy(vertex.descriptor)
             Topomap.vertex.append(vertex)
             vertex_index += 1
         else:
@@ -66,7 +59,7 @@ def MessageToTopomap(topomap_message):
             vertex = Support_Vertex()
             vertex.robot_name = topomap_message.support_vertex[support_vertex_index].robot_name
             vertex.id = topomap_message.support_vertex[support_vertex_index].id
-            vertex.pose = list(topomap_message.support_vertex[support_vertex_index].pose)
+            vertex.pose = topomap_message.support_vertex[support_vertex_index].pose
             vertex.local_free_space_rect = topomap_message.support_vertex[support_vertex_index].local_free_space_rect
             Topomap.vertex.append(vertex)
             support_vertex_index+=1

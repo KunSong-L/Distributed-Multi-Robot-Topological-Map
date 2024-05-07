@@ -57,6 +57,7 @@ class RobotNode:
 
 
         self.actoinclient.wait_for_server()
+        print("start exploration")
 
     def change_goal(self):
         # move goal:now_pos + basic_length+offset;  now_angle + nextmove

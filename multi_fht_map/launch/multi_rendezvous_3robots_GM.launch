@@ -1,27 +1,24 @@
 <launch>
-
+  <!--grid map based exp-->
   <arg name="model" default="burger"/>
-  <node name="total_rviz" pkg="rviz" type="rviz" args="-d $(find multi_fht_map)/rviz/3robots.rviz" />
+  <node name="total_rviz" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/GM_rend.rviz" />
   <!-- <node name="rviz0" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot0explore.rviz" />
   <node name="rviz1" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot1explore.rviz" />
   <node name="rviz2" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot2explore.rviz" />
   <node name="rviz3" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot3explore.rviz" /> -->
 
 
-  <node name="robot_explore" pkg="multi_fht_map" type="multi_rendezvous.py" output="screen">
+  <node name="robot_explore" pkg="multi_fht_map" type="multi_rendezvous_GM.py" output="screen">
     <param name="robot_num" value="3"/>
     <param name="network" value="retrievalSfM120k-vgg16-gem" />
     <param name="platform" value="cuda" />
   </node>
   
-  <node name="experiment" pkg="multi_fht_map" type="exp_rend.py" output="screen">
+  <node name="experiment" pkg="multi_fht_map" type="exp_rend_GM.py" output="screen">
       <param name="num_robot" value="3"/>
-      <param name="sim_env" value="museum"/>
-      <!-- <param name="sim_env" value="large_indoor"/> -->
-      <param name="method" value="fht_map"/>
-      <!-- <param name="method" value="mNBV"/> -->
-      <!-- <param name="method" value="vrp"/> -->
-      <!-- <param name="method" value="no_selection"/> -->
+      <!-- <param name="sim_env" value="museum"/> -->
+      <param name="sim_env" value="large_indoor"/>
+      <param name="method" value="grid_map"/>
   </node>
 
 

@@ -9,7 +9,7 @@ Panels:
         - /Pose2
         - /TF1/Frames1
       Splitter Ratio: 0.6617646813392639
-    Tree Height: 1740
+    Tree Height: 270
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -212,7 +212,7 @@ Visualization Manager:
       Marker Topic: /robot1/visualization/marker
       Name: MarkerArray
       Namespaces:
-        topological_map: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -220,7 +220,7 @@ Visualization Manager:
       Marker Topic: /robot1/visualization/edge
       Name: MarkerArray
       Namespaces:
-        topological_map: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/TF
@@ -290,7 +290,7 @@ Visualization Manager:
       Marker Topic: /robot1/frontier_points
       Name: Marker
       Namespaces:
-        frontier_point: true
+        {}
       Queue Size: 100
       Value: true
     - Alpha: 0.699999988079071
@@ -308,7 +308,7 @@ Visualization Manager:
       Marker Topic: /robot1/vertex_free_space
       Name: MarkerArray
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
@@ -339,7 +339,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 303.876953125
+      Distance: 295.1883239746094
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -347,9 +347,9 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 53.40317916870117
-        Y: -46.788780212402344
-        Z: -152.19529724121094
+        X: 2.632511615753174
+        Y: 8.194567680358887
+        Z: -238.4950408935547
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

@@ -304,22 +304,8 @@ class fht_map_creater:
         if create_a_vertex_flag: # create a vertex
             if create_a_vertex_flag == 1:#create a main vertex
                 
-                ch_list = [] #C for localization ability; H for heat value
-                for  now_vertex in self.potential_main_vertex:
-                    C_now = now_vertex[1][0]
-                    H_now = now_vertex[1][1]
-                    ch_list.append([C_now, H_now])
-                
-                total_ch = np.array(ch_list)
-                # omega_ch = np.array([1,2]) 
-                # z_star = np.max(total_ch,axis=0)
-                # total_ch_minus_z = total_ch - z_star
-                # weighted_ch = omega_ch * total_ch_minus_z
-                omega_ch = np.array([-1,2]) 
-                weighted_ch = omega_ch * total_ch
-                infinite_norm_weighted_ch = np.max(weighted_ch,axis=1)
-                best_index = np.argmax(infinite_norm_weighted_ch)
-                vertex = copy.deepcopy(self.potential_main_vertex[best_index][0])
+
+                vertex = copy.deepcopy(self.potential_main_vertex[0][0])
                 self.last_vertex_id, self.current_node = self.map.add(vertex)
                 self.potential_main_vertex = []
                 
@@ -342,13 +328,13 @@ class fht_map_creater:
             else: #refine when create any node
                 refine_flag_list = [1,2]
 
-
             if create_a_vertex_flag in refine_flag_list: 
                 refine_topo_map_msg = String()
                 refine_topo_map_msg.data = "Start_find_path!"
                 self.find_better_path_pub.publish(refine_topo_map_msg) #find a better path
     
     def create_local_free_space_for_single_vertex(self,index):
+        return
         self.map.vertex[index].local_free_space_rect  = find_local_max_rect(self.global_map, self.map.vertex[index].pose[0:2], self.map_origin, self.map_resolution)
     
     def add_a_support_node(self, vertex_pose):
@@ -366,88 +352,18 @@ class fht_map_creater:
         #important parameter
         if self.local_laserscan_angle is None:
             return
-        feature_simliar_th = 0.94
-        main_vertex_dens = self.main_vertex_dens #main_vertex_dens^0.5 is the average distance of a vertex, 4 is good; sigma_c in paper
-        global_vertex_dens = 2 # create a support vertex large than 2 meter
-        # check the heat map value of this point
-        local_laserscan_angle = copy.deepcopy(self.local_laserscan_angle)
-        heat_map_value = self.heat_value_eval()
-        
-        max_sim = 0
-        C_now = 0#calculate C
+
+        min_dis = 999999
         now_pose = np.array(self.pose[0:2])
         for now_vertex in self.map.vertex:
-            if isinstance(now_vertex, Support_Vertex):
-                continue
-            now_similarity = np.dot(now_feature.T, now_vertex.descriptor)
-            max_sim = max(now_similarity,max_sim)
             now_vertex_pose = np.array(now_vertex.pose[0:2])
             dis = np.linalg.norm(now_vertex_pose - now_pose)
-            # print(now_vertex.descriptor_infor)
-            C_now += now_vertex.descriptor_infor * np.exp(-dis**2 / main_vertex_dens)
+            min_dis = min(min_dis,dis)
+        if min_dis > 2.5 or len(self.map.vertex)==0:
+            vertex = Vertex(self.self_robot_name, id=-1, pose=copy.deepcopy(self.pose), descriptor=copy.deepcopy(now_feature),local_laserscan_angle=np.ones(360))
+            self.potential_main_vertex = [[vertex,[0,0]]]
+            return 1
 
-        #similarity smaller than th
-        if max_sim < feature_simliar_th:          
-            #calculate H
-            H_now = heat_map_value
-            
-            #判断是否位于parote optimal front
-            #self.potential_main_vertex: [[vertex,[C,H]],...]
-            remove_list = []
-            on_pareto_optimal_front_flag = True
-            for index, now_vertex in enumerate(self.potential_main_vertex):
-                old_C = now_vertex[1][0]
-                old_H = now_vertex[1][1]
-
-                #C: 取min; H： 取max
-                if old_C < C_now and old_H > H_now:#dominated by old vertex
-                    on_pareto_optimal_front_flag = False
-                    break
-                if old_C > C_now and old_H < H_now:#dominates old vertex
-                    remove_list.append(index)
-            if on_pareto_optimal_front_flag:#更新最优点
-                new_potential_vertex = [value for i, value in enumerate(self.potential_main_vertex) if i not in remove_list]
-                gray_local_img = cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY)
-                vertex = Vertex(self.self_robot_name, id=-1, pose=copy.deepcopy(self.pose), descriptor=copy.deepcopy(now_feature), local_image=gray_local_img, local_laserscan_angle=local_laserscan_angle)
-                new_potential_vertex.append([vertex,[C_now,H_now]])
-                self.potential_main_vertex = new_potential_vertex
-            
-            # print("len of potential vertex list:", len(self.potential_main_vertex))
-        
-        if C_now < 0.368:
-            # create a main vertex
-            if len(self.potential_main_vertex) != 0:
-                return 1
-
-        #check wheter create a supportive vertex
-        map_origin = np.array(self.map_origin)
-        now_robot_pose = (now_pose - map_origin)/self.map_resolution
-        free_line_flag = False
-        
-        for last_vertex in self.map.vertex:
-            last_vertex_pose = np.array(last_vertex.pose[0:2])
-            last_vertex_pose_pixel = ( last_vertex_pose- map_origin)/self.map_resolution
-            if isinstance(last_vertex, Support_Vertex):
-                # free_line_flag = self.free_space_line(last_vertex_pose_pixel, now_robot_pose)
-                free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, 3)
-            else:   
-                free_line_flag = self.expanded_free_space_line(last_vertex_pose_pixel, now_robot_pose, 5)
-            
-            if free_line_flag:
-                break
-        
-        if not free_line_flag:#if not a line in free space, create a support vertex
-            return 2
-
-        min_dens_flag = False
-        for last_vertex in self.map.vertex:
-            last_vertex_pose = np.array(last_vertex.pose[0:2])
-            if np.linalg.norm(now_pose - last_vertex_pose) < global_vertex_dens:
-                min_dens_flag = True
-
-        if not min_dens_flag:#if robot in a place with not that much vertex, then create a support vertex
-            return 3
-        
         return 0
 
     def find_better_path_callback(self,data):
@@ -818,11 +734,6 @@ class fht_map_creater:
             total_cost-=rot_cost_list[-1]
         return total_cost
         
-
-
-
-
-
 if __name__ == '__main__':
     time.sleep(3)
     rospy.init_node('topological_map')

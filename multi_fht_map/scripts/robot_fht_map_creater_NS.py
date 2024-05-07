@@ -1,5 +1,5 @@
 #!/usr/bin/python3.8
-#收集信息构建FHT-Map，机器人不运动
+#construct a FHT-Map without considering heat value
 import rospy
 from sensor_msgs.msg import Image, LaserScan
 import rospkg
@@ -303,22 +303,13 @@ class fht_map_creater:
             
         if create_a_vertex_flag: # create a vertex
             if create_a_vertex_flag == 1:#create a main vertex
-                
                 ch_list = [] #C for localization ability; H for heat value
                 for  now_vertex in self.potential_main_vertex:
                     C_now = now_vertex[1][0]
-                    H_now = now_vertex[1][1]
-                    ch_list.append([C_now, H_now])
+                    ch_list.append([C_now])
                 
                 total_ch = np.array(ch_list)
-                # omega_ch = np.array([1,2]) 
-                # z_star = np.max(total_ch,axis=0)
-                # total_ch_minus_z = total_ch - z_star
-                # weighted_ch = omega_ch * total_ch_minus_z
-                omega_ch = np.array([-1,2]) 
-                weighted_ch = omega_ch * total_ch
-                infinite_norm_weighted_ch = np.max(weighted_ch,axis=1)
-                best_index = np.argmax(infinite_norm_weighted_ch)
+                best_index = np.argmin(total_ch)
                 vertex = copy.deepcopy(self.potential_main_vertex[best_index][0])
                 self.last_vertex_id, self.current_node = self.map.add(vertex)
                 self.potential_main_vertex = []
@@ -371,7 +362,6 @@ class fht_map_creater:
         global_vertex_dens = 2 # create a support vertex large than 2 meter
         # check the heat map value of this point
         local_laserscan_angle = copy.deepcopy(self.local_laserscan_angle)
-        heat_map_value = self.heat_value_eval()
         
         max_sim = 0
         C_now = 0#calculate C
@@ -388,32 +378,17 @@ class fht_map_creater:
 
         #similarity smaller than th
         if max_sim < feature_simliar_th:          
-            #calculate H
-            H_now = heat_map_value
-            
+          
             #判断是否位于parote optimal front
             #self.potential_main_vertex: [[vertex,[C,H]],...]
             remove_list = []
-            on_pareto_optimal_front_flag = True
-            for index, now_vertex in enumerate(self.potential_main_vertex):
-                old_C = now_vertex[1][0]
-                old_H = now_vertex[1][1]
 
-                #C: 取min; H： 取max
-                if old_C < C_now and old_H > H_now:#dominated by old vertex
-                    on_pareto_optimal_front_flag = False
-                    break
-                if old_C > C_now and old_H < H_now:#dominates old vertex
-                    remove_list.append(index)
-            if on_pareto_optimal_front_flag:#更新最优点
-                new_potential_vertex = [value for i, value in enumerate(self.potential_main_vertex) if i not in remove_list]
-                gray_local_img = cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY)
-                vertex = Vertex(self.self_robot_name, id=-1, pose=copy.deepcopy(self.pose), descriptor=copy.deepcopy(now_feature), local_image=gray_local_img, local_laserscan_angle=local_laserscan_angle)
-                new_potential_vertex.append([vertex,[C_now,H_now]])
-                self.potential_main_vertex = new_potential_vertex
-            
-            # print("len of potential vertex list:", len(self.potential_main_vertex))
-        
+            new_potential_vertex = [value for i, value in enumerate(self.potential_main_vertex) if i not in remove_list]
+            gray_local_img = cv2.cvtColor(panoramic_view, cv2.COLOR_RGB2GRAY)
+            vertex = Vertex(self.self_robot_name, id=-1, pose=copy.deepcopy(self.pose), descriptor=copy.deepcopy(now_feature), local_image=gray_local_img, local_laserscan_angle=local_laserscan_angle)
+            new_potential_vertex.append([vertex,[C_now]])
+            self.potential_main_vertex = new_potential_vertex
+                    
         if C_now < 0.368:
             # create a main vertex
             if len(self.potential_main_vertex) != 0:

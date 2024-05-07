@@ -1,7 +1,7 @@
 <launch>
 
   <arg name="model" default="burger"/>
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robotexplore.rviz" />
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find fastest_explore)/rviz/robot1explore.rviz" />
 
 
   <node name="map_building" pkg="fastest_explore" type="robot_explore.py" output="screen">
