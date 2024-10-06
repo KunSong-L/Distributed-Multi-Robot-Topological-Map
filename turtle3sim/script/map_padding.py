@@ -22,7 +22,7 @@ class MapPadding:
         self.zeros_counts = []
         print("robot number =", robot_num)
         if robot_num == 1:
-            self.single_robot = 1
+            self.single_robot = 0 # do not save map data
         else:
             self.single_robot = 0
         self.tf_listener = tf.TransformListener()
@@ -93,17 +93,20 @@ class MapPadding:
 
 
 if __name__ == '__main__':
-    path = "/home/master/FHT_map_data/exp_speed/fht_map/small/"
-    file_paths = glob.glob(os.path.join(path, "*"))
-    # 按文件名进行排序
-    sorted_file_paths = sorted(file_paths, key=lambda x: os.path.basename(x))
-    # 使用正则表达式提取所有数字
-    numbers = re.findall(r"\d+", sorted_file_paths[-1])
-    if numbers:
-        numbers = [int(number) for number in numbers]
-        file_index = str(max(numbers)+1)
-    else:
-        file_index = "1"
+
+    try:
+        path = "/home/master/FHT_map_data/exp_speed/fht_map/small/"
+        file_paths = glob.glob(os.path.join(path, "*"))
+        sorted_file_paths = sorted(file_paths, key=lambda x: os.path.basename(x))
+        # 使用正则表达式提取所有数字
+        numbers = re.findall(r"\d+", sorted_file_paths[-1])
+        if numbers:
+            numbers = [int(number) for number in numbers]
+            file_index = str(max(numbers)+1)
+        else:
+            file_index = "1"
+    except:
+        pass
     
     rospy.init_node("map_padding")
     robot_name = rospy.get_param("~robot_name")
