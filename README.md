@@ -82,6 +82,15 @@ roslaunch turtlebot3sim large_indoor_env_three_robots.launch
 
 # Code Review
 The most important file for this work is **multi_rendezvous.py** in *multi_fht_map/scripts/*.
+In this file, there are three important functions:
+1. PIER_assign: how to achieve PIER exploration for each robot
+2. single_fht_map_merger: each robot tries to merge the other robot's topological map during explroation
+3. multi_robot_rendezvous_callback: when the relative poses between all robots are obtained, this function will perform rendezvous.
+   
+Two lists in this code are very important:
+1. RobotNode_list: this node will manage the necessary part for exploration, for example, how to choose a goal
+2. fhtmap_creater_list: the created FHT-Map of each robot.
+
 
 # Citation
 If you use this code for your research, please cite our papers. *https://arxiv.org/abs/2310.13899*
